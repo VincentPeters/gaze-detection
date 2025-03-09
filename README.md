@@ -1,8 +1,12 @@
-# Eye Contact Detection and Recording
+# Eye Contact: Interactive Art Installation
 
-This application uses computer vision and machine learning to detect when people are making eye contact with the camera. It automatically captures screenshots and records video clips when eye contact is detected, making it useful for engagement analysis, research, and interactive applications.
+This application powers an interactive art installation that explores human connection through eye contact. Using computer vision and machine learning, it detects when viewers make eye contact with the camera, capturing that moment of connection through screenshots and video recordings. The installation creates a dialogue about presence, attention, and the intimacy of direct gaze in our increasingly digital world.
 
-## Features
+## Artistic Concept
+
+The installation invites viewers to engage in a moment of connection with the digital eye. When a viewer makes eye contact with the camera, the system recognizes this moment of connection and preserves it. The collected images and videos become part of the evolving artwork, documenting these fleeting moments of human-machine interaction.
+
+## Technical Features
 
 - **Real-time eye contact detection** using a pre-trained AI model
 - **High-resolution screenshot capture** when eye contact is detected
@@ -11,10 +15,12 @@ This application uses computer vision and machine learning to detect when people
 - **Robust face tracking** that continues even when detection temporarily fails
 - **Configurable parameters** through a central configuration file
 
-## Requirements
+## Installation Requirements
 
 - Python 3.8 or higher
 - Webcam or camera device
+- Computer capable of running real-time computer vision (recommended: 8GB RAM, modern CPU)
+- Display monitor for visual feedback (optional)
 - Dependencies listed in `requirements.txt`
 
 ## Setup
@@ -48,7 +54,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Running the Application
+## Running the Installation
 
 ### Using the Run Scripts
 
@@ -74,7 +80,7 @@ source venv/bin/activate
 python main.py
 ```
 
-The application will:
+The installation will:
 1. Open your webcam
 2. Detect faces in the video stream
 3. Analyze each face for eye contact
@@ -83,9 +89,11 @@ The application will:
 
 Press 'q' to quit the application.
 
+
+
 ## Configuration
 
-You can customize the application's behavior by editing the `config.py` file:
+You can customize the installation's behavior by editing the `config.py` file:
 
 ### Eye Contact Detection
 
@@ -112,7 +120,7 @@ You can customize the application's behavior by editing the `config.py` file:
 - `SCREENSHOTS_DIR`: Directory for saving screenshots
 - `FACES_DIR`: Directory for temporary face images
 
-## Understanding the Output
+## Understanding the Visual Feedback
 
 - **Green box**: Face is making eye contact
 - **Red box**: Face is not making eye contact
@@ -142,4 +150,4 @@ If the application is running slowly:
 ## Acknowledgments
 
 - This project uses MediaPipe for face detection
-- Eye contact detection model based on [reference to original model/paper]
+- Eye contact detection model based on https://github.com/rehg-lab/eye-contact-cnn
