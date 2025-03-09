@@ -15,7 +15,7 @@ mp_drawing = mp.solutions.drawing_utils
 
 # Class to handle video recording of a face
 class FaceVideoRecorder:
-    def __init__(self, filename, width, height, fps=20, duration=3.0):
+    def __init__(self, filename, width, height, fps=20, duration=6.0):
         self.filename = filename
         self.width = width
         self.height = height
@@ -24,6 +24,7 @@ class FaceVideoRecorder:
         self.frame_queue = queue.Queue()
         self.is_recording = False
         self.recording_thread = None
+        self.last_frame = None  # Store the last frame for when detection fails
 
     def start_recording(self):
         self.is_recording = True
@@ -38,6 +39,12 @@ class FaceVideoRecorder:
             if frame.shape[0] != self.height or frame.shape[1] != self.width:
                 frame = cv2.resize(frame, (self.width, self.height))
             self.frame_queue.put(frame.copy())
+            self.last_frame = frame.copy()  # Store this frame
+
+    def add_last_frame_if_available(self):
+        """Add the last frame again if available (used when face detection fails)"""
+        if self.is_recording and self.last_frame is not None:
+            self.frame_queue.put(self.last_frame.copy())
 
     def _record_video(self):
         # Create video writer with MP4 format
@@ -79,12 +86,16 @@ def main():
     # Dictionary to track active recorders
     active_recorders = {}
 
+    # Dictionary to track face positions when detection fails
+    last_face_positions = {}
+
     # Debounce settings
     debounce_time = 5.0  # Seconds between video recordings for the same face
-    screenshot_debounce_time = 2.0  # Seconds between screenshots for the same face
+    screenshot_debounce_time = 1.0  # Seconds between screenshots for the same face
     eye_contact_threshold = 0.5  # Threshold for considering eye contact
-    video_duration = 4.0  # Duration of recorded videos in seconds
+    video_duration = 6.0  # Duration of recorded videos in seconds
     post_gaze_record_time = 1.0  # Continue recording for this many seconds after eye contact is lost
+    face_redetection_timeout = 1.0  # How long to keep tracking a face after detection fails
 
     # Face box margin settings (percentage of original size)
     face_margin_percent = 40  # Add 40% margin around the face
@@ -105,6 +116,7 @@ def main():
     print(f"Debounce time between screenshots: {screenshot_debounce_time} seconds")
     print(f"Video duration: {video_duration} seconds")
     print(f"Continue recording after eye contact lost: {post_gaze_record_time} seconds")
+    print(f"Face redetection timeout: {face_redetection_timeout} seconds")
     print(f"Face margin: {face_margin_percent}% of original size")
     print(f"Saving videos in MP4 format")
 
@@ -154,11 +166,12 @@ def main():
 
         # Track which faces we've seen in this frame
         current_faces = set()
+        current_time = time.time()
 
         # Create a copy of the frame for drawing indicators
         display_frame = frame.copy()
 
-        # Draw face detections and create face windows
+        # Process detected faces
         if faces.detections:
             num_faces = len(faces.detections)
             print(f"Detected {num_faces} faces")
@@ -183,6 +196,15 @@ def main():
                 w_expanded = min(w + 2 * margin_w, frame.shape[1] - x_expanded)
                 h_expanded = min(h + 2 * margin_h, frame.shape[0] - y_expanded)
 
+                # Store the current face position for tracking when detection fails
+                last_face_positions[face_id] = {
+                    "x": x_expanded,
+                    "y": y_expanded,
+                    "w": w_expanded,
+                    "h": h_expanded,
+                    "last_seen": current_time
+                }
+
                 # Extract face region with margin from the original frame
                 if w_expanded > 0 and h_expanded > 0:  # Make sure we have a valid region
                     face_img = frame[y_expanded:y_expanded+h_expanded, x_expanded:x_expanded+w_expanded].copy()
@@ -200,7 +222,6 @@ def main():
                     eye_contact_color = (0, 255, 0) if has_eye_contact else (0, 0, 255)
 
                     # Handle video recording and screenshot logic for eye contact
-                    current_time = time.time()
 
                     # Initialize tracker for this face if it doesn't exist
                     if face_id not in eye_contact_tracker:
@@ -341,12 +362,54 @@ def main():
                     cv2.putText(display_frame, eye_contact_label, (x_expanded, y_expanded - 30),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, rect_color, 2)
 
+        # Process faces that weren't detected in this frame but were recently seen
+        faces_to_check = set(last_face_positions.keys()) - current_faces
+        for face_id in faces_to_check:
+            face_data = last_face_positions[face_id]
+
+            # Only process faces that were seen recently (within the timeout period)
+            if current_time - face_data["last_seen"] < face_redetection_timeout:
+                # Extract coordinates
+                x_expanded = face_data["x"]
+                y_expanded = face_data["y"]
+                w_expanded = face_data["w"]
+                h_expanded = face_data["h"]
+
+                # Make sure the coordinates are still valid
+                if (x_expanded >= 0 and y_expanded >= 0 and
+                    x_expanded + w_expanded <= frame.shape[1] and
+                    y_expanded + h_expanded <= frame.shape[0]):
+
+                    # Extract face region using the last known position
+                    face_img = frame[y_expanded:y_expanded+h_expanded, x_expanded:x_expanded+w_expanded].copy()
+
+                    # Add the frame to any active recorder for this face
+                    if face_id in active_recorders and active_recorders[face_id].is_recording:
+                        active_recorders[face_id].add_frame(face_img)
+
+                        # Draw a dashed rectangle to indicate we're using the last known position
+                        # Use a normal line type since LINE_DASHED is not available
+                        cv2.rectangle(display_frame, (x_expanded, y_expanded),
+                                     (x_expanded + w_expanded, y_expanded + h_expanded), (0, 165, 255), 1)
+
+                        # Add a label to indicate we're still tracking
+                        cv2.putText(display_frame, f"Tracking Face {face_id.split('_')[1]}",
+                                   (x_expanded, y_expanded - 10),
+                                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 165, 255), 2)
+            else:
+                # Face hasn't been seen for too long, remove it from tracking
+                if face_id in last_face_positions:
+                    del last_face_positions[face_id]
+
         # Clean up eye contact tracker and recorders for faces that are no longer detected
         faces_to_remove_from_tracker = []
         for face_id in eye_contact_tracker:
-            if face_id not in current_faces:
+            # Only remove faces that haven't been seen for a while and aren't being recorded
+            if (face_id not in current_faces and
+                (face_id not in last_face_positions or
+                 current_time - last_face_positions[face_id]["last_seen"] > face_redetection_timeout) and
+                (face_id not in active_recorders or not active_recorders[face_id].is_recording)):
                 faces_to_remove_from_tracker.append(face_id)
-                # If there's an active recorder for this face, it will continue until completion
 
         for face_id in faces_to_remove_from_tracker:
             del eye_contact_tracker[face_id]
@@ -354,7 +417,9 @@ def main():
         # Close windows for faces that are no longer detected
         faces_to_remove = []
         for face_id in active_faces:
-            if face_id not in current_faces:
+            if (face_id not in current_faces and
+                (face_id not in last_face_positions or
+                 current_time - last_face_positions[face_id]["last_seen"] > face_redetection_timeout)):
                 window_name = active_faces[face_id]
                 cv2.destroyWindow(window_name)
                 faces_to_remove.append(face_id)

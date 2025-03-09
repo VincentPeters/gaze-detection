@@ -181,6 +181,7 @@ The following plan breaks down the process into clear, incremental tasks.
 1. **Packaging** ✅
    - If you plan to distribute or run this on multiple machines, consider packaging your dependencies. Use `requirements.txt` or a virtual environment.
    - Keep the model file (`.pth`, `.pb`, etc.) in a known location or embed it in your distribution.
+   - Specify exact versions of critical dependencies (OpenCV 4.11.0.86, MediaPipe 0.10.21) to ensure compatibility.
 
 2. **Auto-Run / Startup**
    - If you want your system to start on boot (for a kiosk-like setup), create a script or systemd service that launches your Python script automatically.
@@ -199,7 +200,7 @@ The following plan breaks down the process into clear, incremental tasks.
 
 1. **Media Capture for Eye Contact** ✅
    - Automatically capture both screenshots and video clips when direct eye contact is detected.
-   - Implement separate debounce mechanisms for screenshots and videos to control capture frequency.
+   - Implement separate debounce mechanisms for screenshots (1 second) and videos (5 seconds) to control capture frequency.
    - Use multithreading to handle video recording without affecting the main application performance.
    - Save media with timestamps and face identifiers for later analysis.
    - This feature is useful for:
@@ -213,6 +214,12 @@ The following plan breaks down the process into clear, incremental tasks.
    - Expand the face bounding box to capture more context around the face.
    - Continue recording for a short time after eye contact is lost to create smoother videos.
    - Use a queue-based approach to ensure all frames are captured properly.
+
+3. **Robust Face Tracking** ✅
+   - Continue tracking faces even when detection temporarily fails.
+   - Store the last known position of each face and continue recording from that position.
+   - Implement a timeout mechanism to stop tracking faces that haven't been detected for too long.
+   - Provide visual feedback when using the last known position for tracking.
 
 ---
 
@@ -241,5 +248,6 @@ The following plan breaks down the process into clear, incremental tasks.
    - Use multithreading to handle recording without affecting main application performance.
    - Save videos in MP4 format with expanded face regions.
    - Continue recording briefly after eye contact is lost for smoother videos.
+   - Implement robust face tracking to handle temporary detection failures.
 
 By following these steps, you'll integrate a **pre-trained direct eye contact detector** into your existing face detection pipeline, obtaining a reliable measure of whether someone is looking directly at the camera even when pupil-based methods fail for smaller or distant faces.
