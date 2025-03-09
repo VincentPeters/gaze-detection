@@ -197,16 +197,22 @@ The following plan breaks down the process into clear, incremental tasks.
 
 ## 7. Additional Features ✅
 
-1. **Video Recording for Eye Contact** ✅
-   - Automatically record short video clips when direct eye contact is detected.
-   - Implement a debounce mechanism to avoid recording too many videos of the same face.
+1. **Media Capture for Eye Contact** ✅
+   - Automatically capture both screenshots and video clips when direct eye contact is detected.
+   - Implement separate debounce mechanisms for screenshots and videos to control capture frequency.
    - Use multithreading to handle video recording without affecting the main application performance.
-   - Save videos with timestamps and face identifiers for later analysis.
+   - Save media with timestamps and face identifiers for later analysis.
    - This feature is useful for:
      - Collecting training data for model improvement
      - Creating a record of engagement for analysis
      - Building attention-based interactive applications
      - Studying user behavior and attention patterns
+
+2. **Enhanced Video Recording** ✅
+   - Save videos in MP4 format for better compatibility and compression.
+   - Expand the face bounding box to capture more context around the face.
+   - Continue recording for a short time after eye contact is lost to create smoother videos.
+   - Use a queue-based approach to ensure all frames are captured properly.
 
 ---
 
@@ -230,8 +236,10 @@ The following plan breaks down the process into clear, incremental tasks.
    - Possibly add smoothing or calibration.
 
 5. **Additional Features** ✅
-   - Implement video recording for faces making direct eye contact.
-   - Add debounce mechanism to control recording frequency.
+   - Implement both screenshot and video recording for faces making direct eye contact.
+   - Add separate debounce mechanisms to control screenshot and video recording frequency.
    - Use multithreading to handle recording without affecting main application performance.
+   - Save videos in MP4 format with expanded face regions.
+   - Continue recording briefly after eye contact is lost for smoother videos.
 
 By following these steps, you'll integrate a **pre-trained direct eye contact detector** into your existing face detection pipeline, obtaining a reliable measure of whether someone is looking directly at the camera even when pupil-based methods fail for smaller or distant faces.

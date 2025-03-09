@@ -40,8 +40,8 @@ class FaceVideoRecorder:
             self.frame_queue.put(frame.copy())
 
     def _record_video(self):
-        # Create video writer
-        fourcc = cv2.VideoWriter_fourcc(*'XVID')
+        # Create video writer with MP4 format
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # MP4 codec
         out = cv2.VideoWriter(self.filename, fourcc, self.fps, (self.width, self.height))
 
         start_time = time.time()
@@ -64,12 +64,11 @@ class FaceVideoRecorder:
             print(f"Finished recording video: {self.filename} ({frame_count} frames)")
 
 def main():
-    # Create faces directory if it doesn't exist
-    os.makedirs("faces", exist_ok=True)
-
-    # Create a directory for eye contact videos
+    # Create directories for eye contact media
     videos_dir = "eye_contact_videos"
+    screenshots_dir = "eye_contact_screenshots"
     os.makedirs(videos_dir, exist_ok=True)
+    os.makedirs(screenshots_dir, exist_ok=True)
 
     # Initialize the eye contact detector
     eye_contact_detector = EyeContactDetector(model_path="models/model_weights.pkl")
@@ -82,8 +81,10 @@ def main():
 
     # Debounce settings
     debounce_time = 5.0  # Seconds between video recordings for the same face
+    screenshot_debounce_time = 2.0  # Seconds between screenshots for the same face
     eye_contact_threshold = 0.5  # Threshold for considering eye contact
-    video_duration = 3.0  # Duration of recorded videos in seconds
+    video_duration = 4.0  # Duration of recorded videos in seconds
+    post_gaze_record_time = 1.0  # Continue recording for this many seconds after eye contact is lost
 
     # Face box margin settings (percentage of original size)
     face_margin_percent = 40  # Add 40% margin around the face
@@ -99,10 +100,13 @@ def main():
 
     print("Camera opened successfully!")
     print("Press 'q' to quit the application")
-    print(f"Recording videos of faces with direct eye contact (threshold: {eye_contact_threshold})")
+    print(f"Recording videos and taking screenshots of faces with direct eye contact (threshold: {eye_contact_threshold})")
     print(f"Debounce time between recordings: {debounce_time} seconds")
+    print(f"Debounce time between screenshots: {screenshot_debounce_time} seconds")
     print(f"Video duration: {video_duration} seconds")
+    print(f"Continue recording after eye contact lost: {post_gaze_record_time} seconds")
     print(f"Face margin: {face_margin_percent}% of original size")
+    print(f"Saving videos in MP4 format")
 
     # Set camera properties for better performance
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
@@ -195,7 +199,7 @@ def main():
                     # Choose color based on eye contact (green for eye contact, red for no eye contact)
                     eye_contact_color = (0, 255, 0) if has_eye_contact else (0, 0, 255)
 
-                    # Handle video recording logic for eye contact
+                    # Handle video recording and screenshot logic for eye contact
                     current_time = time.time()
 
                     # Initialize tracker for this face if it doesn't exist
@@ -203,9 +207,33 @@ def main():
                         eye_contact_tracker[face_id] = {
                             "last_eye_contact": False,
                             "last_recording_time": 0,
+                            "last_screenshot_time": 0,
                             "recording_count": 0,
-                            "is_recording": False
+                            "screenshot_count": 0,
+                            "is_recording": False,
+                            "lost_eye_contact_time": 0
                         }
+
+                    # Check if we should take a screenshot
+                    if (has_eye_contact and
+                        (current_time - eye_contact_tracker[face_id]["last_screenshot_time"] > screenshot_debounce_time)):
+
+                        # Create a timestamp for the filename
+                        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                        screenshot_count = eye_contact_tracker[face_id]["screenshot_count"] + 1
+                        screenshot_filename = f"{screenshots_dir}/face_{i+1}_eye_contact_{timestamp}_{screenshot_count}.jpg"
+
+                        # Save the screenshot
+                        cv2.imwrite(screenshot_filename, face_img)
+
+                        # Update tracker
+                        eye_contact_tracker[face_id]["last_screenshot_time"] = current_time
+                        eye_contact_tracker[face_id]["screenshot_count"] = screenshot_count
+
+                        print(f"Screenshot taken for Face {i+1} with eye contact probability {eye_contact_prob:.2f}")
+
+                        # Add a screenshot indicator to the label
+                        eye_contact_label = f"Screenshot! {eye_contact_label}"
 
                     # Check if we should start recording a video
                     if (has_eye_contact and
@@ -215,7 +243,7 @@ def main():
                         # Create a timestamp for the filename
                         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
                         recording_count = eye_contact_tracker[face_id]["recording_count"] + 1
-                        video_filename = f"{videos_dir}/face_{i+1}_eye_contact_{timestamp}_{recording_count}.avi"
+                        video_filename = f"{videos_dir}/face_{i+1}_eye_contact_{timestamp}_{recording_count}.mp4"
 
                         # Create and start a new recorder
                         recorder = FaceVideoRecorder(
@@ -232,18 +260,34 @@ def main():
                         eye_contact_tracker[face_id]["last_recording_time"] = current_time
                         eye_contact_tracker[face_id]["recording_count"] = recording_count
                         eye_contact_tracker[face_id]["is_recording"] = True
+                        eye_contact_tracker[face_id]["lost_eye_contact_time"] = 0
 
                         print(f"Started recording video for Face {i+1} with eye contact probability {eye_contact_prob:.2f}")
 
                         # Add a recording indicator to the label
                         eye_contact_label = f"Recording... {eye_contact_label}"
 
+                    # Track when eye contact is lost during recording
+                    if eye_contact_tracker[face_id]["is_recording"]:
+                        if has_eye_contact:
+                            # Reset the lost eye contact time if eye contact is regained
+                            eye_contact_tracker[face_id]["lost_eye_contact_time"] = 0
+                        elif eye_contact_tracker[face_id]["lost_eye_contact_time"] == 0:
+                            # Start tracking when eye contact was lost
+                            eye_contact_tracker[face_id]["lost_eye_contact_time"] = current_time
+
                     # Add the current frame to the recorder if recording
                     if face_id in active_recorders and active_recorders[face_id].is_recording:
                         active_recorders[face_id].add_frame(face_img)
 
-                    # Reset recording flag if recording has finished
-                    if eye_contact_tracker[face_id]["is_recording"] and face_id in active_recorders and not active_recorders[face_id].is_recording:
+                    # Check if we should stop recording (only if post-gaze time has elapsed)
+                    lost_eye_contact_time = eye_contact_tracker[face_id]["lost_eye_contact_time"]
+                    if (eye_contact_tracker[face_id]["is_recording"] and
+                        lost_eye_contact_time > 0 and
+                        current_time - lost_eye_contact_time > post_gaze_record_time and
+                        face_id in active_recorders and
+                        not active_recorders[face_id].is_recording):
+
                         eye_contact_tracker[face_id]["is_recording"] = False
                         # Remove the recorder from active recorders
                         if face_id in active_recorders:
