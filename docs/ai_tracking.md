@@ -195,6 +195,21 @@ The following plan breaks down the process into clear, incremental tasks.
 
 ---
 
+## 7. Additional Features ✅
+
+1. **Video Recording for Eye Contact** ✅
+   - Automatically record short video clips when direct eye contact is detected.
+   - Implement a debounce mechanism to avoid recording too many videos of the same face.
+   - Use multithreading to handle video recording without affecting the main application performance.
+   - Save videos with timestamps and face identifiers for later analysis.
+   - This feature is useful for:
+     - Collecting training data for model improvement
+     - Creating a record of engagement for analysis
+     - Building attention-based interactive applications
+     - Studying user behavior and attention patterns
+
+---
+
 ## Summary of the Integration Steps
 
 1. **Load the Model** ✅
@@ -213,5 +228,10 @@ The following plan breaks down the process into clear, incremental tasks.
    - Evaluate performance (FPS).
    - Adjust threshold or frame skipping if needed.
    - Possibly add smoothing or calibration.
+
+5. **Additional Features** ✅
+   - Implement video recording for faces making direct eye contact.
+   - Add debounce mechanism to control recording frequency.
+   - Use multithreading to handle recording without affecting main application performance.
 
 By following these steps, you'll integrate a **pre-trained direct eye contact detector** into your existing face detection pipeline, obtaining a reliable measure of whether someone is looking directly at the camera even when pupil-based methods fail for smaller or distant faces.
