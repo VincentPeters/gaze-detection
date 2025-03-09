@@ -142,4 +142,4 @@ If the application is running slowly:
 ## Acknowledgments
 
 - This project uses MediaPipe for face detection
-- Eye contact detection model based on [reference to original model/paper]
+- Eye contact detection model based on https://github.com/rehg-lab/eye-contact-cnn
