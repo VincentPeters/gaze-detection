@@ -56,3 +56,5 @@ logs/
 
 # Jupyter Notebook
 .ipynb_checkpoints
+
+demo/
