@@ -8,6 +8,7 @@ from eye_contact_model import EyeContactDetector  # Import the eye contact detec
 import datetime
 import threading
 import queue
+import config  # Import the configuration file
 
 # Init Models
 mp_face = mp.solutions.face_detection
@@ -15,7 +16,7 @@ mp_drawing = mp.solutions.drawing_utils
 
 # Class to handle video recording of a face
 class FaceVideoRecorder:
-    def __init__(self, filename, width, height, fps=20, duration=6.0):
+    def __init__(self, filename, width, height, fps=config.VIDEO_FPS, duration=config.VIDEO_DURATION):
         self.filename = filename
         self.width = width
         self.height = height
@@ -71,14 +72,13 @@ class FaceVideoRecorder:
             print(f"Finished recording video: {self.filename} ({frame_count} frames)")
 
 def main():
-    # Create directories for eye contact media
-    videos_dir = "eye_contact_videos"
-    screenshots_dir = "eye_contact_screenshots"
-    os.makedirs(videos_dir, exist_ok=True)
-    os.makedirs(screenshots_dir, exist_ok=True)
+    # Create directories if they don't exist
+    os.makedirs(config.FACES_DIR, exist_ok=True)
+    os.makedirs(config.VIDEOS_DIR, exist_ok=True)
+    os.makedirs(config.SCREENSHOTS_DIR, exist_ok=True)
 
     # Initialize the eye contact detector
-    eye_contact_detector = EyeContactDetector(model_path="models/model_weights.pkl")
+    eye_contact_detector = EyeContactDetector(model_path=config.MODEL_PATH)
 
     # Dictionary to track eye contact state and last recording time for each face
     eye_contact_tracker = {}
@@ -89,20 +89,32 @@ def main():
     # Dictionary to track face positions when detection fails
     last_face_positions = {}
 
-    # Debounce settings
-    debounce_time = 5.0  # Seconds between video recordings for the same face
-    screenshot_debounce_time = 1.0  # Seconds between screenshots for the same face
-    eye_contact_threshold = 0.5  # Threshold for considering eye contact
-    video_duration = 6.0  # Duration of recorded videos in seconds
-    post_gaze_record_time = 1.0  # Continue recording for this many seconds after eye contact is lost
-    face_redetection_timeout = 1.0  # How long to keep tracking a face after detection fails
-
-    # Face box margin settings (percentage of original size)
-    face_margin_percent = 40  # Add 40% margin around the face
-
     print("Starting camera capture...")
     # Use camera index 0 which was confirmed working
     cap = cv2.VideoCapture(0)
+
+    # Try to set the highest possible resolution for the camera
+    original_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    original_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    highest_width, highest_height = original_width, original_height
+
+    if config.HIGH_RES_ENABLED:
+        for width, height in config.CAMERA_RESOLUTIONS:
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+            actual_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            actual_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+            if actual_width == width and actual_height == height:
+                highest_width, highest_height = width, height
+                print(f"Set camera resolution to {width}x{height}")
+                break
+
+        # If no resolution worked, revert to original
+        if highest_width != original_width or highest_height != original_height:
+            print(f"Using resolution: {highest_width}x{highest_height}")
+        else:
+            print(f"Using default resolution: {original_width}x{original_height}")
 
     # Check if camera opened successfully
     if not cap.isOpened():
@@ -111,22 +123,21 @@ def main():
 
     print("Camera opened successfully!")
     print("Press 'q' to quit the application")
-    print(f"Recording videos and taking screenshots of faces with direct eye contact (threshold: {eye_contact_threshold})")
-    print(f"Debounce time between recordings: {debounce_time} seconds")
-    print(f"Debounce time between screenshots: {screenshot_debounce_time} seconds")
-    print(f"Video duration: {video_duration} seconds")
-    print(f"Continue recording after eye contact lost: {post_gaze_record_time} seconds")
-    print(f"Face redetection timeout: {face_redetection_timeout} seconds")
-    print(f"Face margin: {face_margin_percent}% of original size")
+    print(f"Recording videos and taking screenshots of faces with direct eye contact (threshold: {config.EYE_CONTACT_THRESHOLD})")
+    print(f"Debounce time between recordings: {config.DEBOUNCE_TIME} seconds")
+    print(f"Debounce time between screenshots: {config.SCREENSHOT_DEBOUNCE_TIME} seconds")
+    print(f"Video duration: {config.VIDEO_DURATION} seconds")
+    print(f"Continue recording after eye contact lost: {config.POST_GAZE_RECORD_TIME} seconds")
+    print(f"Face redetection timeout: {config.FACE_REDETECTION_TIMEOUT} seconds")
+    print(f"Face margin: {config.FACE_MARGIN_PERCENT}% of original size")
     print(f"Saving videos in MP4 format")
-
-    # Set camera properties for better performance
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    print(f"High-resolution screenshots: {'Enabled' if config.HIGH_RES_ENABLED else 'Disabled'}")
 
     # Initialize MediaPipe face detection
-    # Use model_selection=1 for full range detection (better for multiple faces)
-    face_detection = mp_face.FaceDetection(min_detection_confidence=0.5, model_selection=1)
+    face_detection = mp_face.FaceDetection(
+        min_detection_confidence=config.FACE_DETECTION_CONFIDENCE,
+        model_selection=config.FACE_DETECTION_MODEL
+    )
 
     frame_count = 0
     start_time = time.time()
@@ -134,14 +145,9 @@ def main():
     # Dictionary to track active face windows
     active_faces = {}
 
-    # Window positioning parameters
-    main_window_name = 'Face Detection'
-    window_width = 200  # Width of face windows
-    window_height = 200  # Height of face windows
-
     # Position the main window
-    cv2.namedWindow(main_window_name)
-    cv2.moveWindow(main_window_name, 50, 50)
+    cv2.namedWindow(config.MAIN_WINDOW_NAME)
+    cv2.moveWindow(config.MAIN_WINDOW_NAME, *config.MAIN_WINDOW_POSITION)
 
     while True:
         ret, frame = cap.read()
@@ -155,11 +161,21 @@ def main():
             fps = frame_count / elapsed_time
             print(f"FPS: {fps:.2f}, Frame size: {frame.shape}")
 
-        # Flip the frame horizontally for a more natural view
-        frame = cv2.flip(frame, 1)
+        # Store the original high-resolution frame for screenshots
+        high_res_frame = frame.copy()
+
+        # Resize frame for display and processing if needed
+        if config.HIGH_RES_ENABLED and (frame.shape[1] > config.DISPLAY_WIDTH or frame.shape[0] > config.DISPLAY_HEIGHT):
+            display_frame_original = cv2.resize(frame, (config.DISPLAY_WIDTH, config.DISPLAY_HEIGHT))
+        else:
+            display_frame_original = frame.copy()
+
+        # Flip the frames horizontally for a more natural view
+        high_res_frame = cv2.flip(high_res_frame, 1)
+        display_frame_original = cv2.flip(display_frame_original, 1)
 
         # Convert to RGB for MediaPipe
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        rgb_frame = cv2.cvtColor(display_frame_original, cv2.COLOR_BGR2RGB)
 
         # Detect Faces
         faces = face_detection.process(rgb_frame)
@@ -169,7 +185,14 @@ def main():
         current_time = time.time()
 
         # Create a copy of the frame for drawing indicators
-        display_frame = frame.copy()
+        display_frame = display_frame_original.copy()
+
+        # Calculate scale factors between high-res and display frames
+        if config.HIGH_RES_ENABLED:
+            scale_x = high_res_frame.shape[1] / display_frame.shape[1]
+            scale_y = high_res_frame.shape[0] / display_frame.shape[0]
+        else:
+            scale_x, scale_y = 1.0, 1.0
 
         # Process detected faces
         if faces.detections:
@@ -183,18 +206,18 @@ def main():
 
                 # Get bounding box
                 bbox = detection.location_data.relative_bounding_box
-                x, y = int(bbox.xmin * frame.shape[1]), int(bbox.ymin * frame.shape[0])
-                w, h = int(bbox.width * frame.shape[1]), int(bbox.height * frame.shape[0])
+                x, y = int(bbox.xmin * display_frame.shape[1]), int(bbox.ymin * display_frame.shape[0])
+                w, h = int(bbox.width * display_frame.shape[1]), int(bbox.height * display_frame.shape[0])
 
                 # Calculate margin to add around the face (as a percentage of original size)
-                margin_w = int(w * (face_margin_percent / 100))
-                margin_h = int(h * (face_margin_percent / 100))
+                margin_w = int(w * (config.FACE_MARGIN_PERCENT / 100))
+                margin_h = int(h * (config.FACE_MARGIN_PERCENT / 100))
 
                 # Expand the bounding box with the margin
                 x_expanded = max(0, x - margin_w)
                 y_expanded = max(0, y - margin_h)
-                w_expanded = min(w + 2 * margin_w, frame.shape[1] - x_expanded)
-                h_expanded = min(h + 2 * margin_h, frame.shape[0] - y_expanded)
+                w_expanded = min(w + 2 * margin_w, display_frame.shape[1] - x_expanded)
+                h_expanded = min(h + 2 * margin_h, display_frame.shape[0] - y_expanded)
 
                 # Store the current face position for tracking when detection fails
                 last_face_positions[face_id] = {
@@ -205,15 +228,33 @@ def main():
                     "last_seen": current_time
                 }
 
-                # Extract face region with margin from the original frame
+                # Extract face region from the display frame for analysis
                 if w_expanded > 0 and h_expanded > 0:  # Make sure we have a valid region
-                    face_img = frame[y_expanded:y_expanded+h_expanded, x_expanded:x_expanded+w_expanded].copy()
+                    face_img_display = display_frame_original[y_expanded:y_expanded+h_expanded, x_expanded:x_expanded+w_expanded].copy()
 
-                    # Predict eye contact probability
-                    eye_contact_prob = eye_contact_detector.predict_eye_contact_probability(face_img)
+                    # Calculate high-resolution coordinates for the same face region
+                    if config.HIGH_RES_ENABLED:
+                        x_high_res = int(x_expanded * scale_x)
+                        y_high_res = int(y_expanded * scale_y)
+                        w_high_res = int(w_expanded * scale_x)
+                        h_high_res = int(h_expanded * scale_y)
+
+                        # Make sure the coordinates are within the high-res frame boundaries
+                        x_high_res = max(0, x_high_res)
+                        y_high_res = max(0, y_high_res)
+                        w_high_res = min(w_high_res, high_res_frame.shape[1] - x_high_res)
+                        h_high_res = min(h_high_res, high_res_frame.shape[0] - y_high_res)
+
+                        # Extract the high-resolution face region
+                        face_img_high_res = high_res_frame[y_high_res:y_high_res+h_high_res, x_high_res:x_high_res+w_high_res].copy()
+                    else:
+                        face_img_high_res = face_img_display.copy()
+
+                    # Predict eye contact probability using the display resolution face image
+                    eye_contact_prob = eye_contact_detector.predict_eye_contact_probability(face_img_display)
 
                     # Determine if there's eye contact based on a threshold
-                    has_eye_contact = eye_contact_prob > eye_contact_threshold
+                    has_eye_contact = eye_contact_prob > config.EYE_CONTACT_THRESHOLD
 
                     # Create label with eye contact probability
                     eye_contact_label = f"Eye Contact: {eye_contact_prob:.2f}"
@@ -237,21 +278,22 @@ def main():
 
                     # Check if we should take a screenshot
                     if (has_eye_contact and
-                        (current_time - eye_contact_tracker[face_id]["last_screenshot_time"] > screenshot_debounce_time)):
+                        (current_time - eye_contact_tracker[face_id]["last_screenshot_time"] > config.SCREENSHOT_DEBOUNCE_TIME)):
 
                         # Create a timestamp for the filename
                         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
                         screenshot_count = eye_contact_tracker[face_id]["screenshot_count"] + 1
-                        screenshot_filename = f"{screenshots_dir}/face_{i+1}_eye_contact_{timestamp}_{screenshot_count}.jpg"
+                        screenshot_filename = f"{config.SCREENSHOTS_DIR}/face_{i+1}_eye_contact_{timestamp}_{screenshot_count}.jpg"
 
-                        # Save the screenshot
-                        cv2.imwrite(screenshot_filename, face_img)
+                        # Save the high-resolution screenshot
+                        cv2.imwrite(screenshot_filename, face_img_high_res)
 
                         # Update tracker
                         eye_contact_tracker[face_id]["last_screenshot_time"] = current_time
                         eye_contact_tracker[face_id]["screenshot_count"] = screenshot_count
 
                         print(f"Screenshot taken for Face {i+1} with eye contact probability {eye_contact_prob:.2f}")
+                        print(f"Screenshot size: {face_img_high_res.shape[1]}x{face_img_high_res.shape[0]}")
 
                         # Add a screenshot indicator to the label
                         eye_contact_label = f"Screenshot! {eye_contact_label}"
@@ -259,20 +301,26 @@ def main():
                     # Check if we should start recording a video
                     if (has_eye_contact and
                         not eye_contact_tracker[face_id]["is_recording"] and
-                        (current_time - eye_contact_tracker[face_id]["last_recording_time"] > debounce_time)):
+                        (current_time - eye_contact_tracker[face_id]["last_recording_time"] > config.DEBOUNCE_TIME)):
 
                         # Create a timestamp for the filename
                         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
                         recording_count = eye_contact_tracker[face_id]["recording_count"] + 1
-                        video_filename = f"{videos_dir}/face_{i+1}_eye_contact_{timestamp}_{recording_count}.mp4"
+                        video_filename = f"{config.VIDEOS_DIR}/face_{i+1}_eye_contact_{timestamp}_{recording_count}.mp4"
+
+                        # Use high-resolution dimensions for video if available
+                        if config.HIGH_RES_ENABLED:
+                            recorder_width = w_high_res
+                            recorder_height = h_high_res
+                        else:
+                            recorder_width = w_expanded
+                            recorder_height = h_expanded
 
                         # Create and start a new recorder
                         recorder = FaceVideoRecorder(
                             filename=video_filename,
-                            width=w_expanded,
-                            height=h_expanded,
-                            fps=20,
-                            duration=video_duration
+                            width=recorder_width,
+                            height=recorder_height
                         )
                         recorder.start_recording()
                         active_recorders[face_id] = recorder
@@ -284,6 +332,7 @@ def main():
                         eye_contact_tracker[face_id]["lost_eye_contact_time"] = 0
 
                         print(f"Started recording video for Face {i+1} with eye contact probability {eye_contact_prob:.2f}")
+                        print(f"Video size: {recorder_width}x{recorder_height}")
 
                         # Add a recording indicator to the label
                         eye_contact_label = f"Recording... {eye_contact_label}"
@@ -299,13 +348,17 @@ def main():
 
                     # Add the current frame to the recorder if recording
                     if face_id in active_recorders and active_recorders[face_id].is_recording:
-                        active_recorders[face_id].add_frame(face_img)
+                        # Use high-resolution face image for recording if available
+                        if config.HIGH_RES_ENABLED:
+                            active_recorders[face_id].add_frame(face_img_high_res)
+                        else:
+                            active_recorders[face_id].add_frame(face_img_display)
 
                     # Check if we should stop recording (only if post-gaze time has elapsed)
                     lost_eye_contact_time = eye_contact_tracker[face_id]["lost_eye_contact_time"]
                     if (eye_contact_tracker[face_id]["is_recording"] and
                         lost_eye_contact_time > 0 and
-                        current_time - lost_eye_contact_time > post_gaze_record_time and
+                        current_time - lost_eye_contact_time > config.POST_GAZE_RECORD_TIME and
                         face_id in active_recorders and
                         not active_recorders[face_id].is_recording):
 
@@ -318,22 +371,22 @@ def main():
                     eye_contact_tracker[face_id]["last_eye_contact"] = has_eye_contact
 
                     # Resize face image to standard size for the window
-                    face_img_display = cv2.resize(face_img, (window_width, window_height))
+                    face_img_display_resized = cv2.resize(face_img_display, (config.FACE_WINDOW_WIDTH, config.FACE_WINDOW_HEIGHT))
 
                     # Add eye contact label to the face image
-                    cv2.putText(face_img_display, eye_contact_label, (10, 20),
+                    cv2.putText(face_img_display_resized, eye_contact_label, (10, 20),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, eye_contact_color, 1)
 
                     # Add recording indicator if currently recording
                     if eye_contact_tracker[face_id]["is_recording"]:
-                        cv2.circle(face_img_display, (window_width - 20, 20), 10, (0, 0, 255), -1)  # Red circle indicator
+                        cv2.circle(face_img_display_resized, (config.FACE_WINDOW_WIDTH - 20, 20), 10, (0, 0, 255), -1)  # Red circle indicator
 
                     # Create or update face window
                     window_name = f"Face {i+1}"
 
                     # Position the window (main window + offset based on face number)
-                    window_x = 50 + display_frame.shape[1] + 20  # Main window width + margin
-                    window_y = 50 + (i * (window_height + 30))  # Vertical offset for each face
+                    window_x = config.MAIN_WINDOW_POSITION[0] + display_frame.shape[1] + 20  # Main window width + margin
+                    window_y = config.MAIN_WINDOW_POSITION[1] + (i * (config.FACE_WINDOW_HEIGHT + 30))  # Vertical offset for each face
 
                     # Create named window and position it
                     if face_id not in active_faces:
@@ -342,7 +395,7 @@ def main():
                         active_faces[face_id] = window_name
 
                     # Display face in its window
-                    cv2.imshow(window_name, face_img_display)
+                    cv2.imshow(window_name, face_img_display_resized)
 
                 # Draw rectangle around face on the display frame (not affecting the face windows)
                 # Use eye contact color for the rectangle
@@ -368,7 +421,7 @@ def main():
             face_data = last_face_positions[face_id]
 
             # Only process faces that were seen recently (within the timeout period)
-            if current_time - face_data["last_seen"] < face_redetection_timeout:
+            if current_time - face_data["last_seen"] < config.FACE_REDETECTION_TIMEOUT:
                 # Extract coordinates
                 x_expanded = face_data["x"]
                 y_expanded = face_data["y"]
@@ -377,15 +430,36 @@ def main():
 
                 # Make sure the coordinates are still valid
                 if (x_expanded >= 0 and y_expanded >= 0 and
-                    x_expanded + w_expanded <= frame.shape[1] and
-                    y_expanded + h_expanded <= frame.shape[0]):
+                    x_expanded + w_expanded <= display_frame.shape[1] and
+                    y_expanded + h_expanded <= display_frame.shape[0]):
 
                     # Extract face region using the last known position
-                    face_img = frame[y_expanded:y_expanded+h_expanded, x_expanded:x_expanded+w_expanded].copy()
+                    face_img_display = display_frame_original[y_expanded:y_expanded+h_expanded, x_expanded:x_expanded+w_expanded].copy()
+
+                    # Calculate high-resolution coordinates for the same face region
+                    if config.HIGH_RES_ENABLED:
+                        x_high_res = int(x_expanded * scale_x)
+                        y_high_res = int(y_expanded * scale_y)
+                        w_high_res = int(w_expanded * scale_x)
+                        h_high_res = int(h_expanded * scale_y)
+
+                        # Make sure the coordinates are within the high-res frame boundaries
+                        x_high_res = max(0, x_high_res)
+                        y_high_res = max(0, y_high_res)
+                        w_high_res = min(w_high_res, high_res_frame.shape[1] - x_high_res)
+                        h_high_res = min(h_high_res, high_res_frame.shape[0] - y_high_res)
+
+                        # Extract the high-resolution face region
+                        face_img_high_res = high_res_frame[y_high_res:y_high_res+h_high_res, x_high_res:x_high_res+w_high_res].copy()
+                    else:
+                        face_img_high_res = face_img_display.copy()
 
                     # Add the frame to any active recorder for this face
                     if face_id in active_recorders and active_recorders[face_id].is_recording:
-                        active_recorders[face_id].add_frame(face_img)
+                        if config.HIGH_RES_ENABLED:
+                            active_recorders[face_id].add_frame(face_img_high_res)
+                        else:
+                            active_recorders[face_id].add_frame(face_img_display)
 
                         # Draw a dashed rectangle to indicate we're using the last known position
                         # Use a normal line type since LINE_DASHED is not available
@@ -407,7 +481,7 @@ def main():
             # Only remove faces that haven't been seen for a while and aren't being recorded
             if (face_id not in current_faces and
                 (face_id not in last_face_positions or
-                 current_time - last_face_positions[face_id]["last_seen"] > face_redetection_timeout) and
+                 current_time - last_face_positions[face_id]["last_seen"] > config.FACE_REDETECTION_TIMEOUT) and
                 (face_id not in active_recorders or not active_recorders[face_id].is_recording)):
                 faces_to_remove_from_tracker.append(face_id)
 
@@ -419,7 +493,7 @@ def main():
         for face_id in active_faces:
             if (face_id not in current_faces and
                 (face_id not in last_face_positions or
-                 current_time - last_face_positions[face_id]["last_seen"] > face_redetection_timeout)):
+                 current_time - last_face_positions[face_id]["last_seen"] > config.FACE_REDETECTION_TIMEOUT)):
                 window_name = active_faces[face_id]
                 cv2.destroyWindow(window_name)
                 faces_to_remove.append(face_id)
@@ -432,8 +506,17 @@ def main():
         cv2.putText(display_frame, "Press 'q' to quit", (10, display_frame.shape[0] - 10),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
 
+        # Add resolution information
+        if config.HIGH_RES_ENABLED:
+            cv2.putText(display_frame, f"Capture: {high_res_frame.shape[1]}x{high_res_frame.shape[0]}",
+                       (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+            cv2.putText(display_frame, f"Display: {display_frame.shape[1]}x{display_frame.shape[0]}",
+                       (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+            cv2.putText(display_frame, f"Eye Contact Threshold: {config.EYE_CONTACT_THRESHOLD}",
+                       (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+
         # Display the main frame
-        cv2.imshow(main_window_name, display_frame)
+        cv2.imshow(config.MAIN_WINDOW_NAME, display_frame)
 
         # Break the loop on 'q' key press
         if cv2.waitKey(1) & 0xFF == ord('q'):

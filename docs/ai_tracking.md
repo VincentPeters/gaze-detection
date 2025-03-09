@@ -142,14 +142,15 @@ The following plan breaks down the process into clear, incremental tasks.
 
 ---
 
-## 4. Optional: Fine-Tune or Adjust the Model
+## 4. Optional: Fine-Tune or Adjust the Model ✅
 
-1. **Check Real-World Accuracy**
+1. **Check Real-World Accuracy** ✅
    - Test the system with different users, lighting conditions, face distances, and angles.
    - If the results are not consistent, you might need to gather a few examples (images) from your specific environment, label them (eye contact vs. no eye contact), and **fine-tune** the model.
 
-2. **Calibration**
-   - If the model is slightly off in practice (e.g., it's giving 40% when the user is truly looking), you can adjust the threshold or calibrate the model with a small local dataset. For instance, you might find that `prob_eye_contact > 0.7` is the best cutoff for your environment.
+2. **Calibration** ✅
+   - If the model is slightly off in practice (e.g., it's giving 40% when the user is truly looking), you can adjust the threshold or calibrate the model with a small local dataset. For instance, you might find that `prob_eye_contact > 0.3` is the best cutoff for your environment.
+   - Lowered the threshold from 0.5 to 0.3 to make eye contact detection less strict and work at greater distances.
 
 3. **Multi-Face Handling**
    - Because you detect multiple faces, confirm that the bounding boxes/crops are large enough (≥80×80 pixels, ideally 224×224 for many CNNs). If the bounding box is too small (distant faces), the model might fail.
@@ -221,6 +222,17 @@ The following plan breaks down the process into clear, incremental tasks.
    - Implement a timeout mechanism to stop tracking faces that haven't been detected for too long.
    - Provide visual feedback when using the last known position for tracking.
 
+4. **Configuration System** ✅
+   - Create a centralized configuration file (`config.py`) to store all adjustable parameters.
+   - Make it easy to tune the system by changing values in a single location.
+   - Include settings for:
+     - Eye contact threshold (lowered to 0.3 for better detection at distance)
+     - Camera resolution options
+     - Video and screenshot settings
+     - Face detection parameters
+     - UI and display settings
+   - Display current configuration values in the UI for easy reference.
+
 ---
 
 ## Summary of the Integration Steps
@@ -237,10 +249,11 @@ The following plan breaks down the process into clear, incremental tasks.
    - Use a threshold to decide if it's "direct eye contact."
    - Overlay results (probability, label, color-coded bounding box) on the displayed frames.
 
-4. **Test, Tweak, and Optimize**
+4. **Test, Tweak, and Optimize** ✅
    - Evaluate performance (FPS).
    - Adjust threshold or frame skipping if needed.
-   - Possibly add smoothing or calibration.
+   - Lower the eye contact threshold to 0.3 for better detection at greater distances.
+   - Create a configuration file for easy parameter tuning.
 
 5. **Additional Features** ✅
    - Implement both screenshot and video recording for faces making direct eye contact.
@@ -249,5 +262,6 @@ The following plan breaks down the process into clear, incremental tasks.
    - Save videos in MP4 format with expanded face regions.
    - Continue recording briefly after eye contact is lost for smoother videos.
    - Implement robust face tracking to handle temporary detection failures.
+   - Create a centralized configuration system for easy parameter adjustment.
 
 By following these steps, you'll integrate a **pre-trained direct eye contact detector** into your existing face detection pipeline, obtaining a reliable measure of whether someone is looking directly at the camera even when pupil-based methods fail for smaller or distant faces.
