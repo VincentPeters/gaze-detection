@@ -9,6 +9,7 @@ import datetime
 import threading
 import queue
 import config  # Import the configuration file
+from config_window import ConfigWindow  # Import the configuration window
 
 # Init Models
 mp_face = mp.solutions.face_detection
@@ -89,6 +90,9 @@ def main():
     # Dictionary to track face positions when detection fails
     last_face_positions = {}
 
+    # Initialize configuration window
+    config_window = ConfigWindow()
+
     print("Starting camera capture...")
     # Use camera index 0 which was confirmed working
     cap = cv2.VideoCapture(0)
@@ -132,6 +136,11 @@ def main():
     print(f"Face margin: {config.FACE_MARGIN_PERCENT}% of original size")
     print(f"Saving videos in MP4 format")
     print(f"High-resolution screenshots: {'Enabled' if config.HIGH_RES_ENABLED else 'Disabled'}")
+    print(f"Dynamic configuration window enabled. Use 's' to save, 'l' to load, 'r' to reset settings.")
+
+    # Store current configuration values to detect changes
+    current_face_detection_confidence = config.FACE_DETECTION_CONFIDENCE
+    current_face_detection_model = config.FACE_DETECTION_MODEL
 
     # Initialize MediaPipe face detection
     face_detection = mp_face.FaceDetection(
@@ -176,6 +185,19 @@ def main():
 
         # Convert to RGB for MediaPipe
         rgb_frame = cv2.cvtColor(display_frame_original, cv2.COLOR_BGR2RGB)
+
+        # Check if we need to reinitialize face detection with new parameters
+        if (current_face_detection_confidence != config.FACE_DETECTION_CONFIDENCE or
+            current_face_detection_model != config.FACE_DETECTION_MODEL):
+            # Reinitialize MediaPipe face detection with updated parameters
+            face_detection = mp_face.FaceDetection(
+                min_detection_confidence=config.FACE_DETECTION_CONFIDENCE,
+                model_selection=config.FACE_DETECTION_MODEL
+            )
+            # Update current values
+            current_face_detection_confidence = config.FACE_DETECTION_CONFIDENCE
+            current_face_detection_model = config.FACE_DETECTION_MODEL
+            print(f"Updated face detection parameters: confidence={config.FACE_DETECTION_CONFIDENCE}, model={config.FACE_DETECTION_MODEL}")
 
         # Detect Faces
         faces = face_detection.process(rgb_frame)
@@ -518,10 +540,17 @@ def main():
         # Display the main frame
         cv2.imshow(config.MAIN_WINDOW_NAME, display_frame)
 
-        # Break the loop on 'q' key press
-        if cv2.waitKey(1) & 0xFF == ord('q'):
+        # Update configuration window
+        config_window.update_window()
+
+        # Check for key presses
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord('q'):
             print("Quitting application...")
             break
+        else:
+            # Handle configuration window key presses
+            config_window.handle_key(key)
 
     # Clean up
     cap.release()

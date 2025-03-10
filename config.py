@@ -1,4 +1,7 @@
 # Configuration file for the eye contact detection application
+import json
+import threading
+import os
 
 # Paths
 MODEL_PATH = "models/model_weights.pkl"
@@ -21,7 +24,7 @@ FACE_REDETECTION_TIMEOUT = 1.0  # How long to keep tracking a face after detecti
 VIDEO_FPS = 20  # Frames per second for recorded videos
 
 # Resolution settings
-HIGH_RES_ENABLED = True  # Enable high-resolution capture
+HIGH_RES_ENABLED = False  # Enable high-resolution capture
 DISPLAY_WIDTH = 640  # Width for display and processing
 DISPLAY_HEIGHT = 480  # Height for display and processing
 
@@ -36,10 +39,101 @@ CAMERA_RESOLUTIONS = [
 
 # Face detection settings
 FACE_DETECTION_CONFIDENCE = 0.5  # Minimum confidence for face detection
-FACE_DETECTION_MODEL = 1  # MediaPipe model selection (0 for close-range, 1 for full-range)
+FACE_DETECTION_MODEL = 0  # MediaPipe model selection (0 for close-range, 1 for full-range)
 
 # Window settings
 MAIN_WINDOW_NAME = 'Face Detection'
 FACE_WINDOW_WIDTH = 200  # Width of individual face windows
 FACE_WINDOW_HEIGHT = 200  # Height of individual face windows
 MAIN_WINDOW_POSITION = (50, 50)  # (x, y) position of the main window
+
+# Performance optimization settings
+PROCESSING_WIDTH = 320  # Width for face detection processing (smaller = faster)
+PROCESSING_HEIGHT = 240  # Height for face detection processing (smaller = faster)
+FRAME_PROCESSING_INTERVAL = 2  # Process every Nth frame for face detection (higher = less CPU usage)
+DISPLAY_FPS = 15  # Target FPS for display (lower = less CPU usage)
+ENABLE_THREADING = True  # Use threading for face detection to improve responsiveness
+
+# Dynamic configuration settings
+
+# Directory for configuration presets
+CONFIG_PRESETS_DIR = "config_presets"
+os.makedirs(CONFIG_PRESETS_DIR, exist_ok=True)
+
+# Store default values
+DEFAULT_CONFIG = {
+    'FACE_DETECTION_CONFIDENCE': FACE_DETECTION_CONFIDENCE,
+    'FACE_DETECTION_MODEL': FACE_DETECTION_MODEL,
+    'FACE_MARGIN_PERCENT': FACE_MARGIN_PERCENT,
+    'FACE_REDETECTION_TIMEOUT': FACE_REDETECTION_TIMEOUT,
+    'EYE_CONTACT_THRESHOLD': EYE_CONTACT_THRESHOLD,
+    'DEBOUNCE_TIME': DEBOUNCE_TIME,
+    'SCREENSHOT_DEBOUNCE_TIME': SCREENSHOT_DEBOUNCE_TIME,
+    'POST_GAZE_RECORD_TIME': POST_GAZE_RECORD_TIME,
+    'HIGH_RES_ENABLED': HIGH_RES_ENABLED,
+    'VIDEO_FPS': VIDEO_FPS,
+    'FRAME_PROCESSING_INTERVAL': FRAME_PROCESSING_INTERVAL,
+    'PROCESSING_WIDTH': PROCESSING_WIDTH,
+    'PROCESSING_HEIGHT': PROCESSING_HEIGHT
+}
+
+# Thread lock for config updates
+config_lock = threading.Lock()
+
+def update_config(param_name, value):
+    """Update a configuration parameter with thread safety."""
+    with config_lock:
+        globals()[param_name] = value
+    return value
+
+def get_current_config():
+    """Get the current configuration as a dictionary."""
+    current_config = {}
+    for param_name in DEFAULT_CONFIG.keys():
+        current_config[param_name] = globals()[param_name]
+    return current_config
+
+def save_config(preset_name):
+    """Save the current configuration as a preset."""
+    if not preset_name.endswith('.json'):
+        preset_name += '.json'
+
+    filepath = os.path.join(CONFIG_PRESETS_DIR, preset_name)
+    with open(filepath, 'w') as f:
+        json.dump(get_current_config(), f, indent=4)
+    return filepath
+
+def load_config(preset_name):
+    """Load a configuration preset."""
+    if not preset_name.endswith('.json'):
+        preset_name += '.json'
+
+    filepath = os.path.join(CONFIG_PRESETS_DIR, preset_name)
+    try:
+        with open(filepath, 'r') as f:
+            preset_config = json.load(f)
+
+        # Update all parameters
+        with config_lock:
+            for param_name, value in preset_config.items():
+                if param_name in globals():
+                    globals()[param_name] = value
+
+        return True
+    except (FileNotFoundError, json.JSONDecodeError):
+        return False
+
+def reset_config():
+    """Reset all configuration parameters to their default values."""
+    with config_lock:
+        for param_name, value in DEFAULT_CONFIG.items():
+            globals()[param_name] = value
+    return DEFAULT_CONFIG
+
+def get_config_presets():
+    """Get a list of available configuration presets."""
+    presets = []
+    for filename in os.listdir(CONFIG_PRESETS_DIR):
+        if filename.endswith('.json'):
+            presets.append(filename)
+    return presets
