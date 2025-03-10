@@ -4,6 +4,7 @@ import cv2
 import numpy as np
 from PIL import Image, ImageTk
 import threading
+import re
 
 class LayoutManager:
     """
@@ -400,13 +401,29 @@ class LayoutManager:
             message: The message to add
         """
         try:
+            # Skip empty messages or messages with only whitespace
+            if not message or message.isspace():
+                return
+
             # Enable text widget for editing
             self.log_text.configure(state=tk.NORMAL)
 
             # Add message with timestamp
             import datetime
             timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+
+            # Strip any trailing newlines to avoid double lines
+            message = message.rstrip('\n')
+
+            # Skip empty messages after stripping
+            if not message:
+                return
+
+            # Format with timestamp and ensure single newline
             formatted_message = f"[{timestamp}] {message}\n"
+
+            # Replace multiple consecutive newlines with a single newline
+            formatted_message = re.sub(r'\n+', '\n', formatted_message)
 
             # Insert at end and scroll to see it
             self.log_text.insert(tk.END, formatted_message)
