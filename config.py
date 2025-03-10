@@ -58,6 +58,47 @@ FRAME_PROCESSING_INTERVAL = 2  # Process every Nth frame for face detection (hig
 DISPLAY_FPS = 15  # Target FPS for display (lower = less CPU usage)
 ENABLE_THREADING = True  # Use threading for face detection to improve responsiveness
 
+# Layout settings (new)
+USE_TKINTER_LAYOUT = True  # Whether to use the new Tkinter layout
+ENABLE_FULLSCREEN = False  # Whether to start in fullscreen mode
+LAYOUT_THEME = 'dark'  # UI theme (dark or light)
+
+# Layout colors (new)
+LAYOUT_COLORS = {
+    'dark': {
+        'background': '#333333',
+        'panel_bg': '#222222',
+        'panel_border': '#444444',
+        'text': '#CCCCCC',
+        'title': '#FFFFFF',
+        'highlight': '#3498db',
+        'recording': '#e74c3c'
+    },
+    'light': {
+        'background': '#F0F0F0',
+        'panel_bg': '#FFFFFF',
+        'panel_border': '#CCCCCC',
+        'text': '#333333',
+        'title': '#000000',
+        'highlight': '#2980b9',
+        'recording': '#c0392b'
+    }
+}
+
+# Panel titles (new)
+PANEL_TITLES = {
+    'camera': 'LIVE FEED OF THE CAMERA',
+    'face1': 'FACE1 tracking',
+    'face2': 'FACE2 tracking',
+    'face3': 'FACE3 tracking',
+    'face4': 'FACE4 tracking',
+    'log': 'LOGGING MESSAGES',
+    'empty': 'EMPTY PANEL'
+}
+
+# Log settings (new)
+LOG_MAX_LINES = 1000  # Maximum number of lines to keep in the log
+
 # Dynamic configuration settings
 
 # Directory for configuration presets
@@ -80,7 +121,11 @@ DEFAULT_CONFIG = {
     'PROCESSING_WIDTH': PROCESSING_WIDTH,
     'PROCESSING_HEIGHT': PROCESSING_HEIGHT,
     'VIDEO_CAPTURE_ENABLED': VIDEO_CAPTURE_ENABLED,
-    'IMAGE_CAPTURE_ENABLED': IMAGE_CAPTURE_ENABLED
+    'IMAGE_CAPTURE_ENABLED': IMAGE_CAPTURE_ENABLED,
+    # New layout settings
+    'USE_TKINTER_LAYOUT': USE_TKINTER_LAYOUT,
+    'ENABLE_FULLSCREEN': ENABLE_FULLSCREEN,
+    'LAYOUT_THEME': LAYOUT_THEME
 }
 
 # Thread lock for config updates
@@ -143,3 +188,15 @@ def get_config_presets():
         if filename.endswith('.json'):
             presets.append(filename)
     return presets
+
+def get_layout_color(color_name):
+    """Get a color from the current theme."""
+    theme = LAYOUT_THEME
+    if theme not in LAYOUT_COLORS:
+        theme = 'dark'  # Default to dark theme if the specified theme doesn't exist
+
+    if color_name in LAYOUT_COLORS[theme]:
+        return LAYOUT_COLORS[theme][color_name]
+    else:
+        # Return a default color if the specified color doesn't exist
+        return '#333333' if theme == 'dark' else '#FFFFFF'

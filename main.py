@@ -4,12 +4,20 @@ import mediapipe as mp
 import os
 import time
 import numpy as np
-from eye_contact_model import EyeContactDetector  # Import the eye contact detector
-import datetime
+from datetime import datetime
 import threading
 import queue
 import config  # Import the configuration file
 from config_window import ConfigWindow  # Import the configuration window
+import tkinter as tk  # Import tkinter for the new layout
+from log_redirect import LogRedirector
+
+# Import layout manager if enabled in config
+if config.USE_TKINTER_LAYOUT:
+    from layout_manager import LayoutManager
+
+# Import eye contact detection model
+from eye_contact_model import EyeContactDetector
 
 # Init Models
 mp_face = mp.solutions.face_detection
@@ -23,153 +31,206 @@ class FaceVideoRecorder:
         self.height = height
         self.fps = fps
         self.duration = duration
-        self.frame_queue = queue.Queue()
-        self.is_recording = False
-        self.recording_thread = None
-        self.last_frame = None  # Store the last frame for when detection fails
+        self.frames = []
+        self.recording = False
+        self.writer = None
+        self.thread = None
 
     def start_recording(self):
-        self.is_recording = True
-        self.recording_thread = threading.Thread(target=self._record_video)
-        self.recording_thread.daemon = True
-        self.recording_thread.start()
-        print(f"Started recording video to {self.filename}")
+        self.recording = True
+        self.frames = []
+        print(f"Started recording to {self.filename}")
 
     def add_frame(self, frame):
-        if self.is_recording:
+        if self.recording:
             # Resize frame if needed
-            if frame.shape[0] != self.height or frame.shape[1] != self.width:
+            if frame.shape[1] != self.width or frame.shape[0] != self.height:
                 frame = cv2.resize(frame, (self.width, self.height))
-            self.frame_queue.put(frame.copy())
-            self.last_frame = frame.copy()  # Store this frame
+            self.frames.append(frame.copy())
 
     def add_last_frame_if_available(self):
-        """Add the last frame again if available (used when face detection fails)"""
-        if self.is_recording and self.last_frame is not None:
-            self.frame_queue.put(self.last_frame.copy())
+        if self.frames and self.recording:
+            self.frames.append(self.frames[-1].copy())
 
     def _record_video(self):
         # Create video writer with MP4 format
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # MP4 codec
-        out = cv2.VideoWriter(self.filename, fourcc, self.fps, (self.width, self.height))
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        self.writer = cv2.VideoWriter(self.filename, fourcc, self.fps, (self.width, self.height))
 
-        start_time = time.time()
-        frame_count = 0
+        # Write all frames
+        for frame in self.frames:
+            self.writer.write(frame)
 
-        try:
-            while time.time() - start_time < self.duration:
-                try:
-                    # Get frame from queue with timeout
-                    frame = self.frame_queue.get(timeout=0.1)
-                    out.write(frame)
-                    frame_count += 1
-                except queue.Empty:
-                    # If no new frame is available, continue waiting
-                    continue
-        finally:
-            # Release the video writer
-            out.release()
-            self.is_recording = False
-            print(f"Finished recording video: {self.filename} ({frame_count} frames)")
+        # Release the writer
+        self.writer.release()
+        print(f"Finished recording {self.filename}")
 
-def main():
-    # Create directories if they don't exist
-    os.makedirs(config.FACES_DIR, exist_ok=True)
-    os.makedirs(config.VIDEOS_DIR, exist_ok=True)
-    os.makedirs(config.SCREENSHOTS_DIR, exist_ok=True)
+        # Reset recording state
+        self.recording = False
+        self.frames = []
 
-    # Initialize the eye contact detector
-    eye_contact_detector = EyeContactDetector(model_path=config.MODEL_PATH)
+    def stop_recording(self):
+        if self.recording:
+            self.recording = False
+            # Start a new thread to write the video
+            self.thread = threading.Thread(target=self._record_video)
+            self.thread.daemon = True
+            self.thread.start()
 
-    # Dictionary to track eye contact state and last recording time for each face
-    eye_contact_tracker = {}
+    def is_recording(self):
+        return self.recording
 
-    # Dictionary to track active recorders
-    active_recorders = {}
+class FaceTrackingApp:
+    def __init__(self):
+        # Create directories if they don't exist
+        os.makedirs(config.FACES_DIR, exist_ok=True)
+        os.makedirs(config.VIDEOS_DIR, exist_ok=True)
+        os.makedirs(config.SCREENSHOTS_DIR, exist_ok=True)
 
-    # Dictionary to track face positions when detection fails
-    last_face_positions = {}
+        # Initialize Tkinter root if using Tkinter layout
+        self.tk_root = None
+        self.layout_manager = None
+        self.log_redirector = None
 
-    # Initialize configuration window
-    config_window = ConfigWindow()
+        if config.USE_TKINTER_LAYOUT:
+            self.tk_root = tk.Tk()
+            self.tk_root.title("Face Tracking with Eye Contact Detection")
 
-    print("Starting camera capture...")
-    # Use camera index 0 which was confirmed working
-    cap = cv2.VideoCapture(0)
+            # Set initial window size (80% of screen)
+            screen_width = self.tk_root.winfo_screenwidth()
+            screen_height = self.tk_root.winfo_screenheight()
+            width = int(screen_width * 0.8)
+            height = int(screen_height * 0.8)
+            self.tk_root.geometry(f"{width}x{height}")
 
-    # Try to set the highest possible resolution for the camera
-    original_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    original_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    highest_width, highest_height = original_width, original_height
+            # Initialize layout manager
+            self.layout_manager = LayoutManager(root=self.tk_root, enable_fullscreen=config.ENABLE_FULLSCREEN)
 
-    if config.HIGH_RES_ENABLED:
-        for width, height in config.CAMERA_RESOLUTIONS:
-            cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-            actual_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-            actual_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            # Set up log redirector
+            self.log_redirector = LogRedirector(self.layout_manager.log_text)
+            self.log_redirector.start_redirect()
 
-            if actual_width == width and actual_height == height:
-                highest_width, highest_height = width, height
-                print(f"Set camera resolution to {width}x{height}")
-                break
+            # Process initial events to ensure widgets are properly initialized
+            self.tk_root.update_idletasks()
 
-        # If no resolution worked, revert to original
-        if highest_width != original_width or highest_height != original_height:
-            print(f"Using resolution: {highest_width}x{highest_height}")
-        else:
-            print(f"Using default resolution: {original_width}x{original_height}")
+        # Print configuration information
+        print(f"Using device: CPU")
+        print("Starting camera capture...")
 
-    # Check if camera opened successfully
-    if not cap.isOpened():
-        print("Error: Could not open camera. Please check your camera connection.")
-        return
+        # Initialize camera
+        self.cap = cv2.VideoCapture(0)  # Use default camera
+        if not self.cap.isOpened():
+            print("Error: Could not open camera.")
+            return
 
-    print("Camera opened successfully!")
-    print("Press 'q' to quit the application")
-    print(f"Recording videos and taking screenshots of faces with direct eye contact (threshold: {config.EYE_CONTACT_THRESHOLD})")
-    print(f"Video recording: {'Enabled' if config.VIDEO_CAPTURE_ENABLED else 'Disabled'}")
-    print(f"Screenshot capturing: {'Enabled' if config.IMAGE_CAPTURE_ENABLED else 'Disabled'}")
-    print(f"Debounce time between recordings: {config.DEBOUNCE_TIME} seconds")
-    print(f"Debounce time between screenshots: {config.SCREENSHOT_DEBOUNCE_TIME} seconds")
-    print(f"Video duration: {config.VIDEO_DURATION} seconds")
-    print(f"Continue recording after eye contact lost: {config.POST_GAZE_RECORD_TIME} seconds")
-    print(f"Face redetection timeout: {config.FACE_REDETECTION_TIMEOUT} seconds")
-    print(f"Face margin: {config.FACE_MARGIN_PERCENT}% of original size")
-    print(f"Saving videos in MP4 format")
-    print(f"High-resolution screenshots: {'Enabled' if config.HIGH_RES_ENABLED else 'Disabled'}")
-    print(f"Dynamic configuration window enabled. Press 'c' to toggle configuration window, 'r' to reset settings.")
+        print("Camera opened successfully!")
+        print("Press 'q' to quit the application")
 
-    # Store current configuration values to detect changes
-    current_face_detection_confidence = config.FACE_DETECTION_CONFIDENCE
-    current_face_detection_model = config.FACE_DETECTION_MODEL
+        # Set camera properties if specified
+        if hasattr(config, 'CAMERA_WIDTH') and hasattr(config, 'CAMERA_HEIGHT') and config.CAMERA_WIDTH and config.CAMERA_HEIGHT:
+            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, config.CAMERA_WIDTH)
+            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, config.CAMERA_HEIGHT)
 
-    # Initialize MediaPipe face detection
-    face_detection = mp_face.FaceDetection(
-        min_detection_confidence=config.FACE_DETECTION_CONFIDENCE,
-        model_selection=config.FACE_DETECTION_MODEL
-    )
+        # Print recording configuration
+        print(f"Recording videos and taking screenshots of faces with direct eye contact (threshold: {config.EYE_CONTACT_THRESHOLD})")
+        print(f"Video recording: {'Enabled' if config.VIDEO_CAPTURE_ENABLED else 'Disabled'}")
+        print(f"Screenshot capturing: {'Enabled' if config.IMAGE_CAPTURE_ENABLED else 'Disabled'}")
+        print(f"Debounce time between recordings: {config.DEBOUNCE_TIME} seconds")
+        print(f"Debounce time between screenshots: {config.SCREENSHOT_DEBOUNCE_TIME} seconds")
+        print(f"Video duration: {config.VIDEO_DURATION} seconds")
+        print(f"Continue recording after eye contact lost: {config.POST_GAZE_RECORD_TIME} seconds")
+        print(f"Face redetection timeout: {config.FACE_REDETECTION_TIMEOUT} seconds")
+        print(f"Face margin: {config.FACE_MARGIN_PERCENT}% of original size")
+        print(f"Saving videos in MP4 format")
+        print(f"High-resolution screenshots: {'Enabled' if config.HIGH_RES_ENABLED else 'Disabled'}")
+        print(f"Dynamic configuration window enabled. Press 'c' to toggle configuration window, 'r' to reset settings.")
 
-    frame_count = 0
-    start_time = time.time()
+        if self.layout_manager:
+            print(f"Using Tkinter layout: {'Enabled' if config.USE_TKINTER_LAYOUT else 'Disabled'}")
+            print(f"Fullscreen mode: {'Enabled' if config.ENABLE_FULLSCREEN else 'Disabled'}")
+            print(f"Layout theme: {config.LAYOUT_THEME}")
 
-    # Dictionary to track active face windows
-    active_faces = {}
+        # Initialize MediaPipe face detection
+        mp_face_detection = mp.solutions.face_detection
+        self.face_detection = mp_face_detection.FaceDetection(
+            min_detection_confidence=config.FACE_DETECTION_CONFIDENCE,
+            model_selection=config.FACE_DETECTION_MODEL
+        )
 
-    # Position the main window
-    cv2.namedWindow(config.MAIN_WINDOW_NAME)
-    cv2.moveWindow(config.MAIN_WINDOW_NAME, *config.MAIN_WINDOW_POSITION)
+        self.frame_count = 0
+        self.start_time = time.time()
 
-    while True:
-        ret, frame = cap.read()
+        # Dictionary to track active face windows
+        self.active_faces = {}
+
+        # Position the main window (only if not using Tkinter layout)
+        if not self.layout_manager:
+            cv2.namedWindow(config.MAIN_WINDOW_NAME)
+            cv2.moveWindow(config.MAIN_WINDOW_NAME, *config.MAIN_WINDOW_POSITION)
+
+        # Initialize eye contact detector
+        self.eye_contact_detector = EyeContactDetector(model_path=config.MODEL_PATH)
+
+        # Dictionary to track last recording time for each face
+        self.last_recording_time = {}
+        self.last_screenshot_time = {}
+
+        # Dictionary to track eye contact status
+        self.eye_contact_status = {}
+        self.eye_contact_start_time = {}
+
+        # Dictionary to track face video recorders
+        self.face_recorders = {}
+
+        # Dictionary to track when faces were last seen
+        self.last_seen_time = {}
+
+        # Flag to indicate if the application should quit
+        self.should_quit = False
+
+        # Bind keyboard shortcuts if using Tkinter
+        if self.tk_root:
+            self.tk_root.bind('<q>', self.quit_app)
+            self.tk_root.bind('<c>', self.toggle_config_window)
+            self.tk_root.bind('<r>', self.reset_config)
+
+            # Schedule the first frame processing
+            self.tk_root.after(10, self.process_frame)
+
+    def quit_app(self, event=None):
+        """Quit the application."""
+        self.should_quit = True
+        if self.tk_root:
+            self.tk_root.quit()
+
+    def toggle_config_window(self, event=None):
+        """Toggle the configuration window."""
+        if hasattr(config, 'ENABLE_CONFIG_WINDOW') and config.ENABLE_CONFIG_WINDOW:
+            # Import here to avoid circular import
+            from config_window import show_config_window
+            show_config_window()
+
+    def reset_config(self, event=None):
+        """Reset configuration to defaults."""
+        if hasattr(config, 'ENABLE_CONFIG_WINDOW') and config.ENABLE_CONFIG_WINDOW:
+            config.reset_config()
+            print("Configuration reset to defaults")
+
+    def process_frame(self):
+        """Process a single frame from the camera."""
+        if self.should_quit:
+            return
+
+        ret, frame = self.cap.read()
         if not ret:
             print("Failed to grab frame - camera disconnected or end of video file")
-            break
+            self.quit_app()
+            return
 
-        frame_count += 1
-        elapsed_time = time.time() - start_time
-        if frame_count % 30 == 0:  # Print every 30 frames
-            fps = frame_count / elapsed_time
+        self.frame_count += 1
+        elapsed_time = time.time() - self.start_time
+        if self.frame_count % 30 == 0:  # Print every 30 frames
+            fps = self.frame_count / elapsed_time
             print(f"FPS: {fps:.2f}, Frame size: {frame.shape}")
 
         # Store the original high-resolution frame for screenshots
@@ -185,391 +246,295 @@ def main():
         high_res_frame = cv2.flip(high_res_frame, 1)
         display_frame_original = cv2.flip(display_frame_original, 1)
 
-        # Convert to RGB for MediaPipe
-        rgb_frame = cv2.cvtColor(display_frame_original, cv2.COLOR_BGR2RGB)
-
-        # Check if we need to reinitialize face detection with new parameters
-        if (current_face_detection_confidence != config.FACE_DETECTION_CONFIDENCE or
-            current_face_detection_model != config.FACE_DETECTION_MODEL):
-            # Reinitialize MediaPipe face detection with updated parameters
-            face_detection = mp_face.FaceDetection(
-                min_detection_confidence=config.FACE_DETECTION_CONFIDENCE,
-                model_selection=config.FACE_DETECTION_MODEL
-            )
-            # Update current values
-            current_face_detection_confidence = config.FACE_DETECTION_CONFIDENCE
-            current_face_detection_model = config.FACE_DETECTION_MODEL
-            print(f"Updated face detection parameters: confidence={config.FACE_DETECTION_CONFIDENCE}, model={config.FACE_DETECTION_MODEL}")
-
-        # Detect Faces
-        faces = face_detection.process(rgb_frame)
-
-        # Track which faces we've seen in this frame
-        current_faces = set()
-        current_time = time.time()
-
-        # Create a copy of the frame for drawing indicators
+        # Create a copy for drawing
         display_frame = display_frame_original.copy()
 
-        # Calculate scale factors between high-res and display frames
-        if config.HIGH_RES_ENABLED:
-            scale_x = high_res_frame.shape[1] / display_frame.shape[1]
-            scale_y = high_res_frame.shape[0] / display_frame.shape[0]
-        else:
-            scale_x, scale_y = 1.0, 1.0
+        # Convert to RGB for MediaPipe
+        rgb_frame = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
 
-        # Process detected faces
-        if faces.detections:
-            num_faces = len(faces.detections)
-            print(f"Detected {num_faces} faces")
+        # Detect faces
+        results = self.face_detection.process(rgb_frame)
 
-            for i, detection in enumerate(faces.detections):
-                # Get face ID (using index for now)
+        # Set of currently detected face IDs
+        current_faces = set()
+
+        # Process face detections
+        if results.detections:
+            print(f"Detected {len(results.detections)} faces")
+
+            for i, detection in enumerate(results.detections):
+                # Get bounding box
+                bbox = detection.location_data.relative_bounding_box
+                ih, iw, _ = display_frame.shape
+
+                # Convert relative coordinates to absolute
+                xmin = max(0, int(bbox.xmin * iw))
+                ymin = max(0, int(bbox.ymin * ih))
+                width = min(int(bbox.width * iw), iw - xmin)
+                height = min(int(bbox.height * ih), ih - ymin)
+
+                # Add margin to the face crop
+                margin_x = int(width * config.FACE_MARGIN_PERCENT / 100)
+                margin_y = int(height * config.FACE_MARGIN_PERCENT / 100)
+
+                # Calculate expanded bounding box with margin
+                xmin_expanded = max(0, xmin - margin_x)
+                ymin_expanded = max(0, ymin - margin_y)
+                width_expanded = min(width + 2 * margin_x, iw - xmin_expanded)
+                height_expanded = min(height + 2 * margin_y, ih - ymin_expanded)
+
+                # Extract face with margin
+                face_img = display_frame[ymin_expanded:ymin_expanded+height_expanded,
+                                        xmin_expanded:xmin_expanded+width_expanded]
+
+                # Skip if face extraction failed
+                if face_img.size == 0:
+                    continue
+
+                # Generate a unique ID for this face based on its position
                 face_id = f"face_{i+1}"
                 current_faces.add(face_id)
 
-                # Get bounding box
-                bbox = detection.location_data.relative_bounding_box
-                x, y = int(bbox.xmin * display_frame.shape[1]), int(bbox.ymin * display_frame.shape[0])
-                w, h = int(bbox.width * display_frame.shape[1]), int(bbox.height * display_frame.shape[0])
+                # Update last seen time for this face
+                self.last_seen_time[face_id] = time.time()
 
-                # Calculate margin to add around the face (as a percentage of original size)
-                margin_w = int(w * (config.FACE_MARGIN_PERCENT / 100))
-                margin_h = int(h * (config.FACE_MARGIN_PERCENT / 100))
+                # Draw bounding box on the display frame
+                cv2.rectangle(display_frame, (xmin, ymin), (xmin + width, ymin + height), (0, 255, 0), 2)
 
-                # Expand the bounding box with the margin
-                x_expanded = max(0, x - margin_w)
-                y_expanded = max(0, y - margin_h)
-                w_expanded = min(w + 2 * margin_w, display_frame.shape[1] - x_expanded)
-                h_expanded = min(h + 2 * margin_h, display_frame.shape[0] - y_expanded)
+                # Add face ID text
+                cv2.putText(display_frame, face_id, (xmin, ymin - 10),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
 
-                # Store the current face position for tracking when detection fails
-                last_face_positions[face_id] = {
-                    "x": x_expanded,
-                    "y": y_expanded,
-                    "w": w_expanded,
-                    "h": h_expanded,
-                    "last_seen": current_time
-                }
+                # Detect eye contact
+                eye_contact_score = self.eye_contact_detector.predict_eye_contact_probability(face_img)
+                has_eye_contact = eye_contact_score > config.EYE_CONTACT_THRESHOLD
 
-                # Extract face region from the display frame for analysis
-                if w_expanded > 0 and h_expanded > 0:  # Make sure we have a valid region
-                    face_img_display = display_frame_original[y_expanded:y_expanded+h_expanded, x_expanded:x_expanded+w_expanded].copy()
+                # Draw eye contact status
+                status_text = f"Eye contact: {eye_contact_score:.2f}"
+                cv2.putText(display_frame, status_text, (xmin, ymin + height + 20),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                           (0, 255, 0) if has_eye_contact else (0, 0, 255), 1)
 
-                    # Calculate high-resolution coordinates for the same face region
-                    if config.HIGH_RES_ENABLED:
-                        x_high_res = int(x_expanded * scale_x)
-                        y_high_res = int(y_expanded * scale_y)
-                        w_high_res = int(w_expanded * scale_x)
-                        h_high_res = int(h_expanded * scale_y)
+                # Track eye contact status changes
+                if face_id not in self.eye_contact_status:
+                    self.eye_contact_status[face_id] = False
 
-                        # Make sure the coordinates are within the high-res frame boundaries
-                        x_high_res = max(0, x_high_res)
-                        y_high_res = max(0, y_high_res)
-                        w_high_res = min(w_high_res, high_res_frame.shape[1] - x_high_res)
-                        h_high_res = min(h_high_res, high_res_frame.shape[0] - y_high_res)
+                # Check if eye contact status changed
+                if has_eye_contact and not self.eye_contact_status[face_id]:
+                    # Eye contact started
+                    self.eye_contact_status[face_id] = True
+                    self.eye_contact_start_time[face_id] = time.time()
+                    print(f"Eye contact detected for {face_id}! Score: {eye_contact_score:.2f}")
 
-                        # Extract the high-resolution face region
-                        face_img_high_res = high_res_frame[y_high_res:y_high_res+h_high_res, x_high_res:x_high_res+w_high_res].copy()
-                    else:
-                        face_img_high_res = face_img_display.copy()
-
-                    # Predict eye contact probability using the display resolution face image
-                    eye_contact_prob = eye_contact_detector.predict_eye_contact_probability(face_img_display)
-
-                    # Determine if there's eye contact based on a threshold
-                    has_eye_contact = eye_contact_prob > config.EYE_CONTACT_THRESHOLD
-
-                    # Create label with eye contact probability
-                    eye_contact_label = f"Eye Contact: {eye_contact_prob:.2f}"
-
-                    # Choose color based on eye contact (green for eye contact, red for no eye contact)
-                    eye_contact_color = (0, 255, 0) if has_eye_contact else (0, 0, 255)
-
-                    # Handle video recording and screenshot logic for eye contact
-
-                    # Initialize tracker for this face if it doesn't exist
-                    if face_id not in eye_contact_tracker:
-                        eye_contact_tracker[face_id] = {
-                            "last_eye_contact": False,
-                            "last_recording_time": 0,
-                            "last_screenshot_time": 0,
-                            "recording_count": 0,
-                            "screenshot_count": 0,
-                            "is_recording": False,
-                            "lost_eye_contact_time": 0
-                        }
-
-                    # Check if we should take a screenshot
-                    if (config.IMAGE_CAPTURE_ENABLED and
-                        has_eye_contact and
-                        (current_time - eye_contact_tracker[face_id]["last_screenshot_time"] > config.SCREENSHOT_DEBOUNCE_TIME)):
-
-                        # Create a timestamp for the filename
-                        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-                        screenshot_count = eye_contact_tracker[face_id]["screenshot_count"] + 1
-                        screenshot_filename = f"{config.SCREENSHOTS_DIR}/face_{i+1}_eye_contact_{timestamp}_{screenshot_count}.jpg"
-
-                        # Save the high-resolution screenshot
-                        cv2.imwrite(screenshot_filename, face_img_high_res)
-
-                        # Update tracker
-                        eye_contact_tracker[face_id]["last_screenshot_time"] = current_time
-                        eye_contact_tracker[face_id]["screenshot_count"] = screenshot_count
-
-                        print(f"Screenshot taken for Face {i+1} with eye contact probability {eye_contact_prob:.2f}")
-                        print(f"Screenshot size: {face_img_high_res.shape[1]}x{face_img_high_res.shape[0]}")
-
-                        # Add a screenshot indicator to the label
-                        eye_contact_label = f"Screenshot! {eye_contact_label}"
-
-                    # Check if we should start recording a video
+                    # Start recording if enabled and not in debounce period
+                    current_time = time.time()
                     if (config.VIDEO_CAPTURE_ENABLED and
-                        has_eye_contact and
-                        not eye_contact_tracker[face_id]["is_recording"] and
-                        (current_time - eye_contact_tracker[face_id]["last_recording_time"] > config.DEBOUNCE_TIME)):
+                        (face_id not in self.last_recording_time or
+                         current_time - self.last_recording_time.get(face_id, 0) > config.DEBOUNCE_TIME)):
 
                         # Create a timestamp for the filename
-                        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-                        recording_count = eye_contact_tracker[face_id]["recording_count"] + 1
-                        video_filename = f"{config.VIDEOS_DIR}/face_{i+1}_eye_contact_{timestamp}_{recording_count}.mp4"
+                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        video_filename = os.path.join(config.VIDEOS_DIR, f"{face_id}_{timestamp}.mp4")
 
-                        # Use high-resolution dimensions for video if available
+                        # Create a recorder for this face if it doesn't exist
+                        if face_id not in self.face_recorders:
+                            self.face_recorders[face_id] = FaceVideoRecorder(
+                                video_filename,
+                                face_img.shape[1],
+                                face_img.shape[0],
+                                fps=config.VIDEO_FPS,
+                                duration=config.VIDEO_DURATION
+                            )
+
+                        # Start recording
+                        self.face_recorders[face_id].start_recording()
+                        self.last_recording_time[face_id] = current_time
+
+                    # Take screenshot if enabled and not in debounce period
+                    if (config.IMAGE_CAPTURE_ENABLED and
+                        (face_id not in self.last_screenshot_time or
+                         current_time - self.last_screenshot_time.get(face_id, 0) > config.SCREENSHOT_DEBOUNCE_TIME)):
+
+                        # Create a timestamp for the filename
+                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        screenshot_filename = os.path.join(config.SCREENSHOTS_DIR, f"{face_id}_{timestamp}.jpg")
+
+                        # Use high-res frame if enabled
                         if config.HIGH_RES_ENABLED:
-                            recorder_width = w_high_res
-                            recorder_height = h_high_res
-                        else:
-                            recorder_width = w_expanded
-                            recorder_height = h_expanded
+                            # Calculate coordinates in high-res frame
+                            scale_x = high_res_frame.shape[1] / display_frame.shape[1]
+                            scale_y = high_res_frame.shape[0] / display_frame.shape[0]
 
-                        # Create and start a new recorder
-                        recorder = FaceVideoRecorder(
-                            filename=video_filename,
-                            width=recorder_width,
-                            height=recorder_height
+                            hr_xmin = int(xmin_expanded * scale_x)
+                            hr_ymin = int(ymin_expanded * scale_y)
+                            hr_width = int(width_expanded * scale_x)
+                            hr_height = int(height_expanded * scale_y)
+
+                            # Extract face from high-res frame
+                            hr_face_img = high_res_frame[hr_ymin:hr_ymin+hr_height, hr_xmin:hr_xmin+hr_width]
+                            cv2.imwrite(screenshot_filename, hr_face_img)
+                        else:
+                            # Use display resolution
+                            cv2.imwrite(screenshot_filename, face_img)
+
+                        print(f"Saved screenshot to {screenshot_filename}")
+                        self.last_screenshot_time[face_id] = current_time
+
+                elif not has_eye_contact and self.eye_contact_status[face_id]:
+                    # Eye contact ended
+                    self.eye_contact_status[face_id] = False
+                    print(f"Eye contact lost for {face_id}. Score: {eye_contact_score:.2f}")
+
+                    # If recording, continue for a short time then stop
+                    if face_id in self.face_recorders and self.face_recorders[face_id].is_recording():
+                        def stop_recording_later(face_id):
+                            time.sleep(config.POST_GAZE_RECORD_TIME)
+                            if face_id in self.face_recorders:
+                                # Add a few more frames of the last frame
+                                for _ in range(5):
+                                    self.face_recorders[face_id].add_last_frame_if_available()
+                                self.face_recorders[face_id].stop_recording()
+
+                        # Start a thread to stop recording after delay
+                        stop_thread = threading.Thread(
+                            target=stop_recording_later,
+                            args=(face_id,)
                         )
-                        recorder.start_recording()
-                        active_recorders[face_id] = recorder
+                        stop_thread.daemon = True
+                        stop_thread.start()
 
-                        # Update tracker
-                        eye_contact_tracker[face_id]["last_recording_time"] = current_time
-                        eye_contact_tracker[face_id]["recording_count"] = recording_count
-                        eye_contact_tracker[face_id]["is_recording"] = True
-                        eye_contact_tracker[face_id]["lost_eye_contact_time"] = 0
+                # Add frame to recorder if recording
+                if face_id in self.face_recorders and self.face_recorders[face_id].is_recording():
+                    self.face_recorders[face_id].add_frame(face_img)
 
-                        print(f"Started recording video for Face {i+1} with eye contact probability {eye_contact_prob:.2f}")
-                        print(f"Video size: {recorder_width}x{recorder_height}")
+                # Display face in a separate window or panel
+                is_recording = face_id in self.face_recorders and self.face_recorders[face_id].is_recording()
 
-                        # Add a recording indicator to the label
-                        eye_contact_label = f"Recording... {eye_contact_label}"
-
-                    # Track when eye contact is lost during recording
-                    if eye_contact_tracker[face_id]["is_recording"]:
-                        if has_eye_contact:
-                            # Reset the lost eye contact time if eye contact is regained
-                            eye_contact_tracker[face_id]["lost_eye_contact_time"] = 0
-                        elif eye_contact_tracker[face_id]["lost_eye_contact_time"] == 0:
-                            # Start tracking when eye contact was lost
-                            eye_contact_tracker[face_id]["lost_eye_contact_time"] = current_time
-
-                    # Add the current frame to the recorder if recording
-                    if face_id in active_recorders and active_recorders[face_id].is_recording:
-                        # Use high-resolution face image for recording if available
-                        if config.HIGH_RES_ENABLED:
-                            active_recorders[face_id].add_frame(face_img_high_res)
-                        else:
-                            active_recorders[face_id].add_frame(face_img_display)
-
-                    # Check if we should stop recording (only if post-gaze time has elapsed)
-                    lost_eye_contact_time = eye_contact_tracker[face_id]["lost_eye_contact_time"]
-                    if (eye_contact_tracker[face_id]["is_recording"] and
-                        lost_eye_contact_time > 0 and
-                        current_time - lost_eye_contact_time > config.POST_GAZE_RECORD_TIME and
-                        face_id in active_recorders and
-                        not active_recorders[face_id].is_recording):
-
-                        eye_contact_tracker[face_id]["is_recording"] = False
-                        # Remove the recorder from active recorders
-                        if face_id in active_recorders:
-                            del active_recorders[face_id]
-
-                    # Update eye contact state
-                    eye_contact_tracker[face_id]["last_eye_contact"] = has_eye_contact
-
-                    # Resize face image to standard size for the window
-                    face_img_display_resized = cv2.resize(face_img_display, (config.FACE_WINDOW_WIDTH, config.FACE_WINDOW_HEIGHT))
-
-                    # Add eye contact label to the face image
-                    cv2.putText(face_img_display_resized, eye_contact_label, (10, 20),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, eye_contact_color, 1)
-
-                    # Add recording indicator if currently recording
-                    if eye_contact_tracker[face_id]["is_recording"]:
-                        cv2.circle(face_img_display_resized, (config.FACE_WINDOW_WIDTH - 20, 20), 10, (0, 0, 255), -1)  # Red circle indicator
-
-                    # Create or update face window
+                # If using Tkinter layout, update the face panel
+                if self.layout_manager:
+                    # Use the face index (0-3) for the panel
+                    face_index = min(i, 3)  # Limit to 4 panels (0-3)
+                    self.layout_manager.update_face_panel(face_index, face_img, is_recording)
+                else:
+                    # Create or update OpenCV window for this face
                     window_name = f"Face {i+1}"
-
-                    # Position the window (main window + offset based on face number)
-                    window_x = config.MAIN_WINDOW_POSITION[0] + display_frame.shape[1] + 20  # Main window width + margin
-                    window_y = config.MAIN_WINDOW_POSITION[1] + (i * (config.FACE_WINDOW_HEIGHT + 30))  # Vertical offset for each face
-
-                    # Create named window and position it
-                    if face_id not in active_faces:
+                    if window_name not in self.active_faces:
                         cv2.namedWindow(window_name)
-                        cv2.moveWindow(window_name, window_x, window_y)
-                        active_faces[face_id] = window_name
+                        # Position windows in a grid
+                        row, col = divmod(len(self.active_faces), 2)
+                        x_pos = config.MAIN_WINDOW_POSITION[0] + config.DISPLAY_WIDTH + 30 + col * 220
+                        y_pos = config.MAIN_WINDOW_POSITION[1] + row * 220
+                        cv2.moveWindow(window_name, x_pos, y_pos)
+                        self.active_faces[window_name] = face_id
 
-                    # Display face in its window
-                    cv2.imshow(window_name, face_img_display_resized)
+                    # Add recording indicator if recording
+                    if is_recording:
+                        # Draw red circle in top-right corner
+                        circle_radius = 10
+                        cv2.circle(face_img, (face_img.shape[1] - circle_radius - 10, circle_radius + 10),
+                                  circle_radius, (0, 0, 255), -1)
 
-                # Draw rectangle around face on the display frame (not affecting the face windows)
-                # Use eye contact color for the rectangle
-                rect_color = eye_contact_color if 'eye_contact_color' in locals() else (0, 255, 0)
+                    # Show the face
+                    cv2.imshow(window_name, face_img)
 
-                # Draw both the original detection rectangle and the expanded rectangle
-                cv2.rectangle(display_frame, (x, y), (x + w, y + h), (255, 255, 255), 1)  # Original in white
-                cv2.rectangle(display_frame, (x_expanded, y_expanded),
-                             (x_expanded + w_expanded, y_expanded + h_expanded), rect_color, 2)  # Expanded in color
-
-                # Add face number label on the display frame
-                cv2.putText(display_frame, f"Face {i+1}", (x_expanded, y_expanded - 10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, rect_color, 2)
-
-                # Add eye contact label if available
-                if 'eye_contact_label' in locals():
-                    cv2.putText(display_frame, eye_contact_label, (x_expanded, y_expanded - 30),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, rect_color, 2)
-
-        # Process faces that weren't detected in this frame but were recently seen
-        faces_to_check = set(last_face_positions.keys()) - current_faces
-        for face_id in faces_to_check:
-            face_data = last_face_positions[face_id]
-
-            # Only process faces that were seen recently (within the timeout period)
-            if current_time - face_data["last_seen"] < config.FACE_REDETECTION_TIMEOUT:
-                # Extract coordinates
-                x_expanded = face_data["x"]
-                y_expanded = face_data["y"]
-                w_expanded = face_data["w"]
-                h_expanded = face_data["h"]
-
-                # Make sure the coordinates are still valid
-                if (x_expanded >= 0 and y_expanded >= 0 and
-                    x_expanded + w_expanded <= display_frame.shape[1] and
-                    y_expanded + h_expanded <= display_frame.shape[0]):
-
-                    # Extract face region using the last known position
-                    face_img_display = display_frame_original[y_expanded:y_expanded+h_expanded, x_expanded:x_expanded+w_expanded].copy()
-
-                    # Calculate high-resolution coordinates for the same face region
-                    if config.HIGH_RES_ENABLED:
-                        x_high_res = int(x_expanded * scale_x)
-                        y_high_res = int(y_expanded * scale_y)
-                        w_high_res = int(w_expanded * scale_x)
-                        h_high_res = int(h_expanded * scale_y)
-
-                        # Make sure the coordinates are within the high-res frame boundaries
-                        x_high_res = max(0, x_high_res)
-                        y_high_res = max(0, y_high_res)
-                        w_high_res = min(w_high_res, high_res_frame.shape[1] - x_high_res)
-                        h_high_res = min(h_high_res, high_res_frame.shape[0] - y_high_res)
-
-                        # Extract the high-resolution face region
-                        face_img_high_res = high_res_frame[y_high_res:y_high_res+h_high_res, x_high_res:x_high_res+w_high_res].copy()
-                    else:
-                        face_img_high_res = face_img_display.copy()
-
-                    # Add the frame to any active recorder for this face
-                    if face_id in active_recorders and active_recorders[face_id].is_recording:
-                        if config.HIGH_RES_ENABLED:
-                            active_recorders[face_id].add_frame(face_img_high_res)
-                        else:
-                            active_recorders[face_id].add_frame(face_img_display)
-
-                        # Draw a dashed rectangle to indicate we're using the last known position
-                        # Use a normal line type since LINE_DASHED is not available
-                        cv2.rectangle(display_frame, (x_expanded, y_expanded),
-                                     (x_expanded + w_expanded, y_expanded + h_expanded), (0, 165, 255), 1)
-
-                        # Add a label to indicate we're still tracking
-                        cv2.putText(display_frame, f"Tracking Face {face_id.split('_')[1]}",
-                                   (x_expanded, y_expanded - 10),
-                                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 165, 255), 2)
-            else:
-                # Face hasn't been seen for too long, remove it from tracking
-                if face_id in last_face_positions:
-                    del last_face_positions[face_id]
-
-        # Clean up eye contact tracker and recorders for faces that are no longer detected
-        faces_to_remove_from_tracker = []
-        for face_id in eye_contact_tracker:
-            # Only remove faces that haven't been seen for a while and aren't being recorded
-            if (face_id not in current_faces and
-                (face_id not in last_face_positions or
-                 current_time - last_face_positions[face_id]["last_seen"] > config.FACE_REDETECTION_TIMEOUT) and
-                (face_id not in active_recorders or not active_recorders[face_id].is_recording)):
-                faces_to_remove_from_tracker.append(face_id)
-
-        for face_id in faces_to_remove_from_tracker:
-            del eye_contact_tracker[face_id]
-
-        # Close windows for faces that are no longer detected
+        # Check for faces that are no longer detected
         faces_to_remove = []
-        for face_id in active_faces:
-            if (face_id not in current_faces and
-                (face_id not in last_face_positions or
-                 current_time - last_face_positions[face_id]["last_seen"] > config.FACE_REDETECTION_TIMEOUT)):
-                window_name = active_faces[face_id]
-                cv2.destroyWindow(window_name)
-                faces_to_remove.append(face_id)
+        for window_name, face_id in self.active_faces.items():
+            if face_id not in current_faces:
+                # Check if face has been gone long enough to close the window
+                if (face_id in self.last_seen_time and
+                    time.time() - self.last_seen_time[face_id] > config.FACE_REDETECTION_TIMEOUT):
+                    # Close the window if not using Tkinter
+                    if not self.layout_manager:
+                        cv2.destroyWindow(window_name)
+                    faces_to_remove.append(window_name)
+
+                    # Stop any ongoing recording
+                    if face_id in self.face_recorders and self.face_recorders[face_id].is_recording():
+                        self.face_recorders[face_id].stop_recording()
 
         # Remove closed windows from tracking
-        for face_id in faces_to_remove:
-            del active_faces[face_id]
+        for window_name in faces_to_remove:
+            face_id = self.active_faces[window_name]
+            del self.active_faces[window_name]
 
-        # Add instructions text
-        cv2.putText(display_frame, "Press 'q' to quit", (10, display_frame.shape[0] - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-
-        # Add resolution information
-        if config.HIGH_RES_ENABLED:
-            cv2.putText(display_frame, f"Capture: {high_res_frame.shape[1]}x{high_res_frame.shape[0]}",
-                       (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-            cv2.putText(display_frame, f"Display: {display_frame.shape[1]}x{display_frame.shape[0]}",
-                       (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-            cv2.putText(display_frame, f"Eye Contact Threshold: {config.EYE_CONTACT_THRESHOLD}",
-                       (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+            # Clear the face panel in Tkinter layout
+            if self.layout_manager:
+                # Find the panel index for this face
+                for i in range(4):
+                    if f"face_{i+1}" == face_id:
+                        self.layout_manager.clear_face_panel(i)
+                        break
 
         # Display the main frame
-        cv2.imshow(config.MAIN_WINDOW_NAME, display_frame)
-
-        # Update configuration window
-        config_window.update_window()
-
-        # Check for key presses
-        key = cv2.waitKey(1) & 0xFF
-        if key == ord('q'):
-            print("Quitting application...")
-            break
+        if self.layout_manager:
+            # Update the camera feed in Tkinter
+            self.layout_manager.update_camera_feed(display_frame)
         else:
-            # Handle configuration window key presses
-            config_window.handle_key(key)
+            # Show in OpenCV window
+            cv2.imshow(config.MAIN_WINDOW_NAME, display_frame)
 
-    # Clean up
-    cap.release()
-    cv2.destroyAllWindows()
+            # Check for key press in OpenCV window
+            key = cv2.waitKey(1) & 0xFF
 
-    # Wait for any active recorders to finish
-    for face_id, recorder in active_recorders.items():
-        if recorder.recording_thread and recorder.recording_thread.is_alive():
-            print(f"Waiting for recording of face {face_id} to complete...")
-            recorder.recording_thread.join(timeout=1.0)
+            # 'q' to quit
+            if key == ord('q'):
+                self.quit_app()
+                return
 
-    print("Application closed successfully")
+            # 'c' to toggle configuration window
+            if key == ord('c') and hasattr(config, 'ENABLE_CONFIG_WINDOW') and config.ENABLE_CONFIG_WINDOW:
+                self.toggle_config_window()
+
+            # 'r' to reset configuration
+            if key == ord('r') and hasattr(config, 'ENABLE_CONFIG_WINDOW') and config.ENABLE_CONFIG_WINDOW:
+                self.reset_config()
+
+        # Schedule the next frame processing if using Tkinter
+        if self.tk_root and not self.should_quit:
+            self.tk_root.after(10, self.process_frame)
+
+    def run(self):
+        """Run the application."""
+        if self.tk_root:
+            # Start the Tkinter main loop
+            self.tk_root.mainloop()
+        else:
+            # Run the OpenCV main loop
+            while not self.should_quit:
+                self.process_frame()
+
+                # Break if 'q' is pressed
+                key = cv2.waitKey(1) & 0xFF
+                if key == ord('q'):
+                    break
+
+        # Clean up
+        self.cleanup()
+
+    def cleanup(self):
+        """Clean up resources."""
+        # Release the camera
+        self.cap.release()
+
+        # Close all OpenCV windows if not using Tkinter
+        if not self.layout_manager:
+            cv2.destroyAllWindows()
+        else:
+            # Stop log redirection
+            if self.log_redirector:
+                self.log_redirector.stop_redirect()
+
+        # Stop any ongoing recordings
+        for face_id, recorder in self.face_recorders.items():
+            if recorder.is_recording():
+                recorder.stop_recording()
+
+        print("Application closed")
+
+def main():
+    app = FaceTrackingApp()
+    app.run()
 
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception as e:
-        print(f"Error in main application: {e}")
+    main()
