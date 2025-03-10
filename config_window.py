@@ -4,10 +4,18 @@ import config
 import os
 
 class ConfigWindow:
-    def __init__(self):
-        """Initialize the Tkinter-based configuration window."""
+    def __init__(self, parent_root=None):
+        """Initialize the Tkinter-based configuration window.
+
+        Args:
+            parent_root: Optional parent Tkinter root window. If None, a new Toplevel will be created.
+        """
         # Create the main window but don't show it yet
-        self.root = tk.Tk()
+        if parent_root is None:
+            self.root = tk.Toplevel()
+        else:
+            self.root = tk.Toplevel(parent_root)
+
         self.root.title("Detection Settings")
         self.root.geometry("300x600")  # Reduced width from 800 to 600
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
@@ -417,3 +425,23 @@ class ConfigWindow:
     def on_closing(self):
         """Handle window close event."""
         self.toggle_visibility()  # Just hide instead of destroying
+
+# Create a global instance of the configuration window
+config_window_instance = None
+
+def show_config_window(parent_root=None):
+    """Show or hide the configuration window.
+
+    Args:
+        parent_root: Optional parent Tkinter root window.
+    """
+    global config_window_instance
+
+    # Create the window if it doesn't exist
+    if config_window_instance is None:
+        config_window_instance = ConfigWindow(parent_root)
+
+    # Toggle visibility
+    config_window_instance.toggle_visibility()
+
+    return config_window_instance

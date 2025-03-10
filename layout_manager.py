@@ -65,6 +65,10 @@ class LayoutManager:
         self.root.grid_rowconfigure(0, weight=2, minsize=self.camera_height)     # Top row (taller)
         self.root.grid_rowconfigure(1, weight=1, minsize=self.log_panel_height)     # Bottom row
 
+        # Callback functions for keyboard shortcuts
+        self.config_callback = None
+        self.reset_config_callback = None
+
         # Create the main panels
         self._create_panels()
 
@@ -88,7 +92,7 @@ class LayoutManager:
 
         # Set fixed sizes for face panels
         face_width = self.face_panel_width // 2 - 10  # Account for padding
-        face_height = self.camera_height // 2 - 20  # Account for padding and title
+        face_height = self.camera_height // 2 - 10  # Account for padding only (no title)
         for label in self.face_labels:
             label.config(width=face_width, height=face_height)
 
@@ -100,16 +104,10 @@ class LayoutManager:
         # Create styles for panels
         style = ttk.Style()
         style.configure('Panel.TFrame', background='#222222', borderwidth=2, relief='raised')
-        style.configure('PanelTitle.TLabel', background='#333333', foreground='white',
-                        font=('Arial', 10, 'bold'), padding=5)
 
         # 1. Camera Feed Panel (Top Left)
         self.camera_panel = ttk.Frame(self.root, style='Panel.TFrame')
         self.camera_panel.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
-
-        # Camera panel title
-        ttk.Label(self.camera_panel, text="LIVE FEED OF THE CAMERA",
-                 style='PanelTitle.TLabel').pack(side=tk.TOP, fill=tk.X)
 
         # Camera label for displaying the feed (using label instead of canvas)
         self.camera_label = tk.Label(self.camera_panel, bg='black', width=self.camera_width, height=self.camera_height)
@@ -129,9 +127,8 @@ class LayoutManager:
         self.face_panels = []
         self.face_labels = []
 
-        face_titles = ["FACE1 tracking", "FACE2 tracking", "FACE3 tracking", "FACE4 tracking"]
         face_width = self.face_panel_width // 2 - 10  # Account for padding
-        face_height = self.camera_height // 2 - 20  # Account for padding and title
+        face_height = self.camera_height // 2 - 10  # Account for padding only (no title)
 
         for i in range(4):
             row, col = divmod(i, 2)
@@ -139,9 +136,6 @@ class LayoutManager:
             # Create panel frame
             panel = ttk.Frame(self.face_panel_container, style='Panel.TFrame')
             panel.grid(row=row, column=col, padx=3, pady=3, sticky="nsew")
-
-            # Panel title
-            ttk.Label(panel, text=face_titles[i], style='PanelTitle.TLabel').pack(side=tk.TOP, fill=tk.X)
 
             # Label for face display (using label instead of canvas)
             label = tk.Label(panel, bg='black', width=face_width, height=face_height)
@@ -153,9 +147,6 @@ class LayoutManager:
         # 3. Logging Panel (Bottom Left)
         self.log_panel = ttk.Frame(self.root, style='Panel.TFrame')
         self.log_panel.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
-
-        # Log panel title
-        ttk.Label(self.log_panel, text="LOGGING MESSAGES", style='PanelTitle.TLabel').pack(side=tk.TOP, fill=tk.X)
 
         # Text widget for logs with scrollbar
         self.log_text = tk.Text(self.log_panel, bg='#111111', fg='#CCCCCC',
@@ -169,9 +160,6 @@ class LayoutManager:
         # 4. Empty Panel (Bottom Right) for future features
         self.empty_panel = ttk.Frame(self.root, style='Panel.TFrame')
         self.empty_panel.grid(row=1, column=1, padx=5, pady=5, sticky="nsew")
-
-        # Empty panel title
-        ttk.Label(self.empty_panel, text="EMPTY PANEL", style='PanelTitle.TLabel').pack(side=tk.TOP, fill=tk.X)
 
         # Placeholder content
         placeholder = ttk.Label(self.empty_panel, text="Reserved for future features",
@@ -187,8 +175,24 @@ class LayoutManager:
         # Ctrl+Q to quit
         self.root.bind("<Control-q>", lambda e: self.root.quit())
 
+        # 'c' to toggle config window
+        self.root.bind("<c>", self._on_config_key)
+
+        # 'r' to reset config
+        self.root.bind("<r>", self._on_reset_config_key)
+
         # Bind window resize event
         self.root.bind("<Configure>", self._on_window_resize)
+
+    def _on_config_key(self, event):
+        """Handle 'c' key press to toggle config window."""
+        if self.config_callback:
+            self.config_callback(event)
+
+    def _on_reset_config_key(self, event):
+        """Handle 'r' key press to reset config."""
+        if self.reset_config_callback:
+            self.reset_config_callback(event)
 
     def _on_window_resize(self, event):
         """Handle window resize events to update panel sizes proportionally."""
@@ -292,7 +296,7 @@ class LayoutManager:
 
             # Use fixed dimensions for consistent sizing
             panel_width = self.camera_width
-            panel_height = self.camera_height - 30  # Subtract title height
+            panel_height = self.camera_height  # No need to subtract title height anymore
 
             frame_height, frame_width = rgb_frame.shape[:2]
 
@@ -460,6 +464,14 @@ class LayoutManager:
             self.root.quit()
         except Exception as e:
             print(f"Error quitting: {e}")
+
+    def set_config_callback(self, callback):
+        """Set the callback function for the config window toggle."""
+        self.config_callback = callback
+
+    def set_reset_config_callback(self, callback):
+        """Set the callback function for the config reset."""
+        self.reset_config_callback = callback
 
 
 # Simple test function to demonstrate the layout
