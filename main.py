@@ -128,6 +128,8 @@ def main():
     print("Camera opened successfully!")
     print("Press 'q' to quit the application")
     print(f"Recording videos and taking screenshots of faces with direct eye contact (threshold: {config.EYE_CONTACT_THRESHOLD})")
+    print(f"Video recording: {'Enabled' if config.VIDEO_CAPTURE_ENABLED else 'Disabled'}")
+    print(f"Screenshot capturing: {'Enabled' if config.IMAGE_CAPTURE_ENABLED else 'Disabled'}")
     print(f"Debounce time between recordings: {config.DEBOUNCE_TIME} seconds")
     print(f"Debounce time between screenshots: {config.SCREENSHOT_DEBOUNCE_TIME} seconds")
     print(f"Video duration: {config.VIDEO_DURATION} seconds")
@@ -136,7 +138,7 @@ def main():
     print(f"Face margin: {config.FACE_MARGIN_PERCENT}% of original size")
     print(f"Saving videos in MP4 format")
     print(f"High-resolution screenshots: {'Enabled' if config.HIGH_RES_ENABLED else 'Disabled'}")
-    print(f"Dynamic configuration window enabled. Use 's' to save, 'l' to load, 'r' to reset settings.")
+    print(f"Dynamic configuration window enabled. Press 'c' to toggle configuration window, 'r' to reset settings.")
 
     # Store current configuration values to detect changes
     current_face_detection_confidence = config.FACE_DETECTION_CONFIDENCE
@@ -299,7 +301,8 @@ def main():
                         }
 
                     # Check if we should take a screenshot
-                    if (has_eye_contact and
+                    if (config.IMAGE_CAPTURE_ENABLED and
+                        has_eye_contact and
                         (current_time - eye_contact_tracker[face_id]["last_screenshot_time"] > config.SCREENSHOT_DEBOUNCE_TIME)):
 
                         # Create a timestamp for the filename
@@ -321,7 +324,8 @@ def main():
                         eye_contact_label = f"Screenshot! {eye_contact_label}"
 
                     # Check if we should start recording a video
-                    if (has_eye_contact and
+                    if (config.VIDEO_CAPTURE_ENABLED and
+                        has_eye_contact and
                         not eye_contact_tracker[face_id]["is_recording"] and
                         (current_time - eye_contact_tracker[face_id]["last_recording_time"] > config.DEBOUNCE_TIME)):
 

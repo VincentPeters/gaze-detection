@@ -13,6 +13,10 @@ FACES_DIR = "faces"
 EYE_CONTACT_THRESHOLD = 0.3  # Lowered from 0.5 to be less strict
 FACE_MARGIN_PERCENT = 60  # Percentage of margin to add around detected faces
 
+# Capture settings
+VIDEO_CAPTURE_ENABLED = False  # Enable/disable video recording
+IMAGE_CAPTURE_ENABLED = False  # Enable/disable screenshot capturing
+
 # Timing settings
 DEBOUNCE_TIME = 5.0  # Seconds between video recordings for the same face
 SCREENSHOT_DEBOUNCE_TIME = 1.0  # Seconds between screenshots for the same face
@@ -74,7 +78,9 @@ DEFAULT_CONFIG = {
     'VIDEO_FPS': VIDEO_FPS,
     'FRAME_PROCESSING_INTERVAL': FRAME_PROCESSING_INTERVAL,
     'PROCESSING_WIDTH': PROCESSING_WIDTH,
-    'PROCESSING_HEIGHT': PROCESSING_HEIGHT
+    'PROCESSING_HEIGHT': PROCESSING_HEIGHT,
+    'VIDEO_CAPTURE_ENABLED': VIDEO_CAPTURE_ENABLED,
+    'IMAGE_CAPTURE_ENABLED': IMAGE_CAPTURE_ENABLED
 }
 
 # Thread lock for config updates

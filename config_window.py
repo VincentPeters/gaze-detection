@@ -9,7 +9,7 @@ class ConfigWindow:
         # Create the main window but don't show it yet
         self.root = tk.Tk()
         self.root.title("Detection Settings")
-        self.root.geometry("800x600")
+        self.root.geometry("300x600")  # Reduced width from 800 to 600
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
         self.root.withdraw()  # Hide window initially
 
@@ -18,14 +18,23 @@ class ConfigWindow:
 
         # Define settings with clear labels
         self.settings = [
+            # Capture settings section
+            {"name": "Enable Video Capture", "config_key": "VIDEO_CAPTURE_ENABLED", "min": 0, "max": 1, "scale": 1, "type": "bool"},
+            {"name": "Enable Image Capture", "config_key": "IMAGE_CAPTURE_ENABLED", "min": 0, "max": 1, "scale": 1, "type": "bool"},
+
+            # Face detection settings
             {"name": "Face Confidence", "config_key": "FACE_DETECTION_CONFIDENCE", "min": 0, "max": 1, "scale": 0.01, "type": "float"},
             {"name": "Face Model", "config_key": "FACE_DETECTION_MODEL", "min": 0, "max": 1, "scale": 1, "type": "int", "options": ["Close Range", "Full Range"]},
             {"name": "Face Margin Percentage", "config_key": "FACE_MARGIN_PERCENT", "min": 0, "max": 100, "scale": 1, "type": "int"},
             {"name": "Redetection Time (seconds)", "config_key": "FACE_REDETECTION_TIMEOUT", "min": 0, "max": 5, "scale": 0.1, "type": "float"},
             {"name": "Eye Contact Threshold", "config_key": "EYE_CONTACT_THRESHOLD", "min": 0, "max": 1, "scale": 0.01, "type": "float"},
+
+            # Timing settings
             {"name": "Debounce Time (seconds)", "config_key": "DEBOUNCE_TIME", "min": 0, "max": 10, "scale": 0.1, "type": "float"},
             {"name": "Screenshot Debounce (seconds)", "config_key": "SCREENSHOT_DEBOUNCE_TIME", "min": 0, "max": 5, "scale": 0.1, "type": "float"},
             {"name": "Post Gaze Record (seconds)", "config_key": "POST_GAZE_RECORD_TIME", "min": 0, "max": 5, "scale": 0.1, "type": "float"},
+
+            # Resolution and performance settings
             {"name": "High Resolution", "config_key": "HIGH_RES_ENABLED", "min": 0, "max": 1, "scale": 1, "type": "bool"},
             {"name": "Video FPS", "config_key": "VIDEO_FPS", "min": 5, "max": 60, "scale": 1, "type": "int"},
             {"name": "Process Width (pixels)", "config_key": "PROCESSING_WIDTH", "min": 160, "max": 640, "scale": 1, "type": "int"},
@@ -50,14 +59,14 @@ class ConfigWindow:
         """Create the main UI structure."""
         # Create a notebook (tabbed interface)
         self.notebook = ttk.Notebook(self.root)
-        self.notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        self.notebook.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)  # Reduced padding
 
         # Settings tab
         self.settings_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.settings_frame, text="Settings")
 
         # Create a canvas with scrollbar for settings
-        self.canvas = tk.Canvas(self.settings_frame)
+        self.canvas = tk.Canvas(self.settings_frame, width=550)  # Set a specific width for the canvas
         self.scrollbar = ttk.Scrollbar(self.settings_frame, orient="vertical", command=self.canvas.yview)
         self.scrollable_frame = ttk.Frame(self.canvas)
 
@@ -69,7 +78,7 @@ class ConfigWindow:
         self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
         self.canvas.configure(yscrollcommand=self.scrollbar.set)
 
-        self.canvas.pack(side="left", fill="both", expand=True)
+        self.canvas.pack(side="left", fill="both", expand=True, padx=(10, 0))  # Add padding to the left
         self.scrollbar.pack(side="right", fill="y")
 
         # Presets tab
@@ -87,6 +96,10 @@ class ConfigWindow:
         This window allows you to adjust various parameters
         that control the eye contact detection system.
 
+        New features:
+        - Enable/disable video recording
+        - Enable/disable screenshot capturing
+
         Keyboard shortcuts:
         - 'c' - Toggle this configuration window
         - 'r' - Reset all settings to defaults
@@ -96,7 +109,7 @@ class ConfigWindow:
 
         # Add buttons at the bottom
         self.button_frame = ttk.Frame(self.root)
-        self.button_frame.pack(fill=tk.X, padx=10, pady=10)
+        self.button_frame.pack(fill=tk.X, padx=5, pady=5)  # Reduced padding
 
         self.reset_button = ttk.Button(self.button_frame, text="Reset All", command=self.reset_config)
         self.reset_button.pack(side=tk.RIGHT, padx=5)
@@ -106,92 +119,115 @@ class ConfigWindow:
 
     def create_sliders(self):
         """Create sliders for each configurable parameter."""
-        for i, item in enumerate(self.settings):
-            config_key = item["config_key"]
-            name = item["name"]
-            min_val = item["min"]
-            max_val = item["max"]
-            scale = item["scale"]
-            setting_type = item["type"]
+        # Group settings by category
+        categories = [
+            {"name": "Capture Settings", "items": [0, 1]},  # Indices of capture settings
+            {"name": "Face Detection", "items": [2, 3, 4, 5, 6]},  # Indices of face detection settings
+            {"name": "Timing", "items": [7, 8, 9]},  # Indices of timing settings
+            {"name": "Performance", "items": [10, 11, 12, 13, 14]}  # Indices of performance settings
+        ]
 
-            # Create a frame for this setting
-            frame = ttk.Frame(self.scrollable_frame)
-            frame.pack(fill=tk.X, padx=10, pady=5)
+        # Create sliders by category
+        for category in categories:
+            # Add category header
+            header_frame = ttk.Frame(self.scrollable_frame)
+            header_frame.pack(fill=tk.X, padx=5, pady=(10, 2))  # Reduced padding
 
-            # Add label
-            label = ttk.Label(frame, text=name, width=25, anchor=tk.W)
-            label.pack(side=tk.LEFT)
+            header = ttk.Label(header_frame, text=category["name"], font=("TkDefaultFont", 10, "bold"))
+            header.pack(anchor=tk.W)
 
-            # Get current value from config
-            current_value = getattr(config, config_key)
+            # Add separator
+            separator = ttk.Separator(self.scrollable_frame, orient="horizontal")
+            separator.pack(fill=tk.X, padx=5, pady=2)  # Reduced padding
 
-            # Create appropriate control based on type
-            if setting_type == "bool":
-                # Create a checkbox for boolean values
-                var = tk.BooleanVar(value=bool(current_value))
-                control = ttk.Checkbutton(
-                    frame,
-                    variable=var,
-                    command=lambda v=var, key=config_key: self.update_config_from_checkbox(key, v)
-                )
-                control.pack(side=tk.LEFT)
-                self.sliders[config_key] = var
+            # Add settings for this category
+            for idx in category["items"]:
+                item = self.settings[idx]
+                config_key = item["config_key"]
+                name = item["name"]
+                min_val = item["min"]
+                max_val = item["max"]
+                scale = item["scale"]
+                setting_type = item["type"]
 
-                # Value display
-                value_label = ttk.Label(frame, text=str(bool(current_value)), width=10)
-                value_label.pack(side=tk.LEFT, padx=5)
-                self.value_labels[config_key] = value_label
+                # Create a frame for this setting
+                frame = ttk.Frame(self.scrollable_frame)
+                frame.pack(fill=tk.X, padx=5, pady=3)  # Reduced padding
 
-            elif setting_type == "int" and "options" in item:
-                # Create a combobox for enumerated values
-                var = tk.StringVar(value=item["options"][int(current_value)])
-                control = ttk.Combobox(
-                    frame,
-                    textvariable=var,
-                    values=item["options"],
-                    state="readonly",
-                    width=15
-                )
-                control.pack(side=tk.LEFT)
-                control.bind("<<ComboboxSelected>>",
-                             lambda e, cb=control, key=config_key, opts=item["options"]:
-                             self.update_config_from_combobox(key, cb, opts))
-                self.sliders[config_key] = var
+                # Add label
+                label = ttk.Label(frame, text=name, width=20, anchor=tk.W)
+                label.pack(side=tk.LEFT)
 
-                # Value display
-                value_label = ttk.Label(frame, text=str(int(current_value)), width=10)
-                value_label.pack(side=tk.LEFT, padx=5)
-                self.value_labels[config_key] = value_label
+                # Get current value from config
+                current_value = getattr(config, config_key)
 
-            else:
-                # Create a slider for numeric values
-                var = tk.DoubleVar(value=current_value)
-                control = ttk.Scale(
-                    frame,
-                    from_=min_val,
-                    to=max_val,
-                    variable=var,
-                    command=lambda v, key=config_key, scale=scale, type_=setting_type, var=var:
-                            self.update_config_from_slider(key, var.get(), scale, type_)
-                )
-                control.pack(side=tk.LEFT, fill=tk.X, expand=True)
-                self.sliders[config_key] = var
+                # Create appropriate control based on type
+                if setting_type == "bool":
+                    # Create a checkbox for boolean values
+                    var = tk.BooleanVar(value=bool(current_value))
+                    control = ttk.Checkbutton(
+                        frame,
+                        variable=var,
+                        command=lambda v=var, key=config_key: self.update_config_from_checkbox(key, v)
+                    )
+                    control.pack(side=tk.LEFT)
+                    self.sliders[config_key] = var
 
-                # Value display
-                if setting_type == "float":
-                    value_text = f"{current_value:.2f}"
+                    # Value display
+                    value_label = ttk.Label(frame, text=str(bool(current_value)), width=6)
+                    value_label.pack(side=tk.LEFT, padx=5)
+                    self.value_labels[config_key] = value_label
+
+                elif setting_type == "int" and "options" in item:
+                    # Create a combobox for enumerated values
+                    var = tk.StringVar(value=item["options"][int(current_value)])
+                    control = ttk.Combobox(
+                        frame,
+                        textvariable=var,
+                        values=item["options"],
+                        state="readonly",
+                        width=12
+                    )
+                    control.pack(side=tk.LEFT)
+                    control.bind("<<ComboboxSelected>>",
+                                lambda e, cb=control, key=config_key, opts=item["options"]:
+                                self.update_config_from_combobox(key, cb, opts))
+                    self.sliders[config_key] = var
+
+                    # Value display
+                    value_label = ttk.Label(frame, text=str(int(current_value)), width=6)
+                    value_label.pack(side=tk.LEFT, padx=5)
+                    self.value_labels[config_key] = value_label
+
                 else:
-                    value_text = str(int(current_value))
+                    # Create a slider for numeric values
+                    var = tk.DoubleVar(value=current_value)
+                    control = ttk.Scale(
+                        frame,
+                        from_=min_val,
+                        to=max_val,
+                        variable=var,
+                        command=lambda v, key=config_key, scale=scale, type_=setting_type, var=var:
+                                self.update_config_from_slider(key, var.get(), scale, type_)
+                    )
+                    control.pack(side=tk.LEFT, fill=tk.X, expand=True)
+                    self.sliders[config_key] = var
 
-                value_label = ttk.Label(frame, text=value_text, width=10)
-                value_label.pack(side=tk.LEFT, padx=5)
-                self.value_labels[config_key] = value_label
+                    # Value display
+                    if setting_type == "float":
+                        value_text = f"{current_value:.2f}"
+                    else:
+                        value_text = str(int(current_value))
+
+                    value_label = ttk.Label(frame, text=value_text, width=6)
+                    value_label.pack(side=tk.LEFT, padx=5)
+                    self.value_labels[config_key] = value_label
 
     def create_preset_section(self):
         """Create the preset management section."""
         # Frame for preset controls
         preset_control_frame = ttk.Frame(self.presets_frame)
-        preset_control_frame.pack(fill=tk.X, padx=10, pady=10)
+        preset_control_frame.pack(fill=tk.X, padx=5, pady=5)  # Reduced padding
 
         # Label
         preset_label = ttk.Label(preset_control_frame, text="Configuration Presets:")
@@ -199,7 +235,7 @@ class ConfigWindow:
 
         # Preset name entry
         self.preset_name_var = tk.StringVar()
-        preset_entry = ttk.Entry(preset_control_frame, textvariable=self.preset_name_var, width=20)
+        preset_entry = ttk.Entry(preset_control_frame, textvariable=self.preset_name_var, width=15)  # Reduced width
         preset_entry.pack(side=tk.LEFT, padx=5)
 
         # Save button
@@ -208,7 +244,7 @@ class ConfigWindow:
 
         # Frame for preset list
         preset_list_frame = ttk.Frame(self.presets_frame)
-        preset_list_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        preset_list_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)  # Reduced padding
 
         # Listbox with scrollbar for presets
         preset_scrollbar = ttk.Scrollbar(preset_list_frame)
@@ -223,7 +259,7 @@ class ConfigWindow:
 
         # Load and delete buttons
         preset_button_frame = ttk.Frame(self.presets_frame)
-        preset_button_frame.pack(fill=tk.X, padx=10, pady=10)
+        preset_button_frame.pack(fill=tk.X, padx=5, pady=5)  # Reduced padding
 
         load_button = ttk.Button(preset_button_frame, text="Load Selected", command=self.load_preset)
         load_button.pack(side=tk.LEFT, padx=5)
