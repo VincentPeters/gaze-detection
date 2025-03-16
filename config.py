@@ -41,11 +41,14 @@ CAMERA_RESOLUTIONS = [
     (640, 480)     # VGA (fallback)
 ]
 
+# Camera device settings
+CAMERA_DEVICE = 0  # Default camera device index (0 for built-in webcam)
+
 # Face detection settings
 FACE_DETECTION_CONFIDENCE = 0.5  # Minimum confidence for face detection
-FACE_DETECTION_MODEL = 0  # MediaPipe model selection (0 for close-range, 1 for full-range)
+FACE_DETECTION_MODEL = 1  # MediaPipe model selection (0 for close-range, 1 for full-range)
 
-# Window settings
+# Window settingsqs
 MAIN_WINDOW_NAME = 'Face Detection'
 FACE_WINDOW_WIDTH = 200  # Width of individual face windows
 FACE_WINDOW_HEIGHT = 200  # Height of individual face windows

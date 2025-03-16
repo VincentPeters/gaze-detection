@@ -118,7 +118,7 @@ class FaceTrackingApp:
         print("Starting camera capture...")
 
         # Initialize camera
-        self.cap = cv2.VideoCapture(0)  # Use default camera
+        self.cap = cv2.VideoCapture(config.CAMERA_DEVICE)  # Use camera device from config
         if not self.cap.isOpened():
             print("Error: Could not open camera.")
             return
