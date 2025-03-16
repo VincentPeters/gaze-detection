@@ -49,22 +49,23 @@ class LayoutManager:
             self.root.geometry(f"{width}x{height}")
 
         # Define fixed panel sizes based on window size - adjusted for better proportions
-        self.camera_width = int(width * 0.7) if 'width' in locals() else 700  # Increased from 0.65
-        self.camera_height = int(height * 0.7) if 'height' in locals() else 500  # Increased from 0.65
-        self.face_panel_width = int(width * 0.28) if 'width' in locals() else 280  # Decreased from 0.3
-        self.face_panel_height = int(height * 0.7) if 'height' in locals() else 500  # Increased from 0.3
-        self.log_panel_height = int(height * 0.25) if 'height' in locals() else 200
+        self.camera_width = int(width * 0.95) if 'width' in locals() else 950  # Full width
+        self.camera_height = int(height * 0.5) if 'height' in locals() else 400  # Half height
+        self.face_panel_width = int(width * 0.95) if 'width' in locals() else 950  # Full width
+        self.face_panel_height = int(height * 0.3) if 'height' in locals() else 240  # 30% of height
+        self.log_panel_height = int(height * 0.15) if 'height' in locals() else 120  # 15% of height
 
         # Prevent window from being resized smaller than minimum size
-        min_width = self.camera_width + self.face_panel_width + 20  # Reduced padding
-        min_height = self.camera_height + self.log_panel_height + 20  # Reduced padding
+        min_width = self.camera_width + 20  # Padding
+        min_height = self.camera_height + self.face_panel_height + self.log_panel_height + 20  # Padding
         self.root.minsize(min_width, min_height)
 
         # Configure grid layout to be responsive
-        self.root.grid_columnconfigure(0, weight=7, minsize=self.camera_width)  # Camera feed column (wider)
-        self.root.grid_columnconfigure(1, weight=3, minsize=self.face_panel_width)  # Face panels column
-        self.root.grid_rowconfigure(0, weight=7, minsize=self.camera_height)     # Top row (taller)
-        self.root.grid_rowconfigure(1, weight=3, minsize=self.log_panel_height)     # Bottom row
+        self.root.grid_columnconfigure(0, weight=1)  # Full width column
+        self.root.grid_columnconfigure(1, weight=1)  # Full width column
+        self.root.grid_rowconfigure(0, weight=5, minsize=self.camera_height)  # Camera feed row
+        self.root.grid_rowconfigure(1, weight=3, minsize=self.face_panel_height)  # Face panels row
+        self.root.grid_rowconfigure(2, weight=2, minsize=self.log_panel_height)  # Log row
 
         # Callback functions for keyboard shortcuts
         self.config_callback = None
@@ -92,8 +93,8 @@ class LayoutManager:
         self.camera_label.config(width=self.camera_width, height=self.camera_height)
 
         # Set fixed sizes for face panels
-        face_width = self.face_panel_width // 2 - 4  # Reduced padding
-        face_height = self.camera_height // 2 - 4  # Reduced padding
+        face_width = self.face_panel_width // 2 - 4
+        face_height = self.face_panel_height // 2 - 4
         for label in self.face_labels:
             label.config(width=face_width, height=face_height)
 
@@ -106,30 +107,30 @@ class LayoutManager:
         style = ttk.Style()
         style.configure('Panel.TFrame', background='#000000', borderwidth=1, relief='solid')
 
-        # 1. Camera Feed Panel (Top Left)
+        # 1. Camera Feed Panel (Top, full width)
         self.camera_panel = ttk.Frame(self.root, style='Panel.TFrame')
-        self.camera_panel.grid(row=0, column=0, padx=2, pady=2, sticky="nsew")
+        self.camera_panel.grid(row=0, column=0, columnspan=2, padx=2, pady=2, sticky="nsew")
 
-        # Camera label for displaying the feed (using label instead of canvas)
+        # Camera label for displaying the feed
         self.camera_label = tk.Label(self.camera_panel, bg='black', width=self.camera_width, height=self.camera_height)
         self.camera_label.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)
 
-        # 2. Face Tracking Panels (Top Right, 2x2 grid)
+        # 2. Face Tracking Panels (Middle, 2x2 grid)
         self.face_panel_container = ttk.Frame(self.root, style='Panel.TFrame')
-        self.face_panel_container.grid(row=0, column=1, padx=2, pady=2, sticky="nsew")
+        self.face_panel_container.grid(row=1, column=0, columnspan=2, padx=2, pady=2, sticky="nsew")
 
         # Configure the face panel container grid
-        self.face_panel_container.grid_columnconfigure(0, weight=1, minsize=self.face_panel_width//2)
-        self.face_panel_container.grid_columnconfigure(1, weight=1, minsize=self.face_panel_width//2)
-        self.face_panel_container.grid_rowconfigure(0, weight=1, minsize=self.camera_height//2)
-        self.face_panel_container.grid_rowconfigure(1, weight=1, minsize=self.camera_height//2)
+        self.face_panel_container.grid_columnconfigure(0, weight=1)
+        self.face_panel_container.grid_columnconfigure(1, weight=1)
+        self.face_panel_container.grid_rowconfigure(0, weight=1)
+        self.face_panel_container.grid_rowconfigure(1, weight=1)
 
         # Create 4 face panels in a 2x2 grid
         self.face_panels = []
         self.face_labels = []
 
-        face_width = self.face_panel_width // 2 - 4  # Reduced padding
-        face_height = self.camera_height // 2 - 4  # Reduced padding
+        face_width = self.face_panel_width // 2 - 4  # Divide width by 2
+        face_height = self.face_panel_height // 2 - 4  # Divide height by 2
 
         for i in range(4):
             row, col = divmod(i, 2)
@@ -138,7 +139,7 @@ class LayoutManager:
             panel = ttk.Frame(self.face_panel_container, style='Panel.TFrame')
             panel.grid(row=row, column=col, padx=1, pady=1, sticky="nsew")
 
-            # Label for face display (using label instead of canvas)
+            # Label for face display
             label = tk.Label(panel, bg='black', width=face_width, height=face_height)
             label.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)
 
@@ -147,7 +148,7 @@ class LayoutManager:
 
         # 3. Logging Panel (Bottom Left)
         self.log_panel = ttk.Frame(self.root, style='Panel.TFrame')
-        self.log_panel.grid(row=1, column=0, padx=2, pady=2, sticky="nsew")
+        self.log_panel.grid(row=2, column=0, padx=2, pady=2, sticky="nsew")
 
         # Text widget for logs with scrollbar
         self.log_text = tk.Text(self.log_panel, bg='#111111', fg='#CCCCCC',
@@ -160,7 +161,7 @@ class LayoutManager:
 
         # 4. Empty Panel (Bottom Right) for future features
         self.empty_panel = ttk.Frame(self.root, style='Panel.TFrame')
-        self.empty_panel.grid(row=1, column=1, padx=2, pady=2, sticky="nsew")
+        self.empty_panel.grid(row=2, column=1, padx=2, pady=2, sticky="nsew")
 
         # Placeholder content
         placeholder = ttk.Label(self.empty_panel, text="Reserved for future features",
@@ -202,14 +203,13 @@ class LayoutManager:
             # Avoid processing during initialization or when minimized
             if event.width > 100 and event.height > 100:
                 # Update panel size variables based on new window size
-                self.camera_width = int(event.width * 0.7)
-                self.camera_height = int(event.height * 0.7)
-                self.face_panel_width = int(event.width * 0.28)
-                self.face_panel_height = int(event.height * 0.7)
-                self.log_panel_height = int(event.height * 0.25)
+                self.camera_width = event.width - 4  # Full width minus padding
+                self.camera_height = int(event.height * 0.5)  # 50% of height
+                self.face_panel_width = event.width - 4  # Full width minus padding
+                self.face_panel_height = int(event.height * 0.3)  # 30% of height
+                self.log_panel_height = int(event.height * 0.15)  # 15% of height
 
                 # Schedule an update of panel sizes (debounced to avoid too many updates)
-                # Cancel any existing scheduled update
                 if hasattr(self, '_resize_job') and self._resize_job:
                     self.root.after_cancel(self._resize_job)
 
@@ -218,17 +218,16 @@ class LayoutManager:
 
     def _update_panel_sizes(self):
         """Update panel sizes after window resize."""
-        # Update column and row configurations
-        self.root.grid_columnconfigure(0, minsize=self.camera_width)
-        self.root.grid_columnconfigure(1, minsize=self.face_panel_width)
+        # Update row configurations
         self.root.grid_rowconfigure(0, minsize=self.camera_height)
-        self.root.grid_rowconfigure(1, minsize=self.log_panel_height)
+        self.root.grid_rowconfigure(1, minsize=self.face_panel_height)
+        self.root.grid_rowconfigure(2, minsize=self.log_panel_height)
 
         # Update face panel container grid
         self.face_panel_container.grid_columnconfigure(0, minsize=self.face_panel_width//2)
         self.face_panel_container.grid_columnconfigure(1, minsize=self.face_panel_width//2)
-        self.face_panel_container.grid_rowconfigure(0, minsize=self.camera_height//2)
-        self.face_panel_container.grid_rowconfigure(1, minsize=self.camera_height//2)
+        self.face_panel_container.grid_rowconfigure(0, minsize=self.face_panel_height//2)
+        self.face_panel_container.grid_rowconfigure(1, minsize=self.face_panel_height//2)
 
         # Apply the new sizes to panels
         self._set_initial_panel_sizes()
@@ -241,20 +240,20 @@ class LayoutManager:
         # Update panel sizes after toggling fullscreen
         if self.is_fullscreen:
             # In fullscreen, use screen dimensions
-            self.camera_width = int(self.screen_width * 0.7)
-            self.camera_height = int(self.screen_height * 0.7)
-            self.face_panel_width = int(self.screen_width * 0.28)
-            self.face_panel_height = int(self.screen_height * 0.7)
-            self.log_panel_height = int(self.screen_height * 0.25)
+            self.camera_width = self.screen_width - 4
+            self.camera_height = int(self.screen_height * 0.5)
+            self.face_panel_width = self.screen_width - 4
+            self.face_panel_height = int(self.screen_height * 0.3)
+            self.log_panel_height = int(self.screen_height * 0.15)
         else:
             # In windowed mode, use 80% of screen
             width = int(self.screen_width * 0.8)
             height = int(self.screen_height * 0.8)
-            self.camera_width = int(width * 0.7)
-            self.camera_height = int(height * 0.7)
-            self.face_panel_width = int(width * 0.28)
-            self.face_panel_height = int(height * 0.7)
-            self.log_panel_height = int(height * 0.25)
+            self.camera_width = width - 4
+            self.camera_height = int(height * 0.5)
+            self.face_panel_width = width - 4
+            self.face_panel_height = int(height * 0.3)
+            self.log_panel_height = int(height * 0.15)
 
         # Schedule an update of panel sizes
         self.root.after(100, self._update_panel_sizes)
@@ -270,11 +269,11 @@ class LayoutManager:
             # Update panel sizes for windowed mode
             width = int(self.screen_width * 0.8)
             height = int(self.screen_height * 0.8)
-            self.camera_width = int(width * 0.7)
-            self.camera_height = int(height * 0.7)
-            self.face_panel_width = int(width * 0.28)
-            self.face_panel_height = int(height * 0.7)
-            self.log_panel_height = int(height * 0.25)
+            self.camera_width = width - 4
+            self.camera_height = int(height * 0.5)
+            self.face_panel_width = width - 4
+            self.face_panel_height = int(height * 0.3)
+            self.log_panel_height = int(height * 0.15)
 
             # Schedule an update of panel sizes
             self.root.after(100, self._update_panel_sizes)
@@ -362,8 +361,8 @@ class LayoutManager:
                           circle_radius, (255, 0, 0), -1)
 
             # Use fixed dimensions for consistent sizing
-            face_width = self.face_panel_width // 2 - 4  # Reduced padding
-            face_height = self.camera_height // 2 - 4  # Reduced padding
+            face_width = self.face_panel_width // 2 - 4
+            face_height = self.face_panel_height // 2 - 4
 
             # Resize the face frame to fit the panel while maintaining aspect ratio
             frame_height, frame_width = rgb_frame.shape[:2]
