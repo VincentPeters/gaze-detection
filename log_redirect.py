@@ -3,6 +3,7 @@ import threading
 import queue
 import datetime
 import tkinter as tk
+import re
 
 class LogRedirector:
     """
@@ -54,7 +55,11 @@ class LogRedirector:
             try:
                 # Wait for a message with a timeout to allow checking running flag
                 message, is_error = self.queue.get(timeout=0.1)
-                self._update_text_widget(message, is_error)
+
+                # Skip empty messages or messages with only whitespace
+                if message and not message.isspace():
+                    self._update_text_widget(message, is_error)
+
                 self.queue.task_done()
             except queue.Empty:
                 continue
@@ -78,20 +83,33 @@ class LogRedirector:
             except:
                 pass
 
+    def _consolidate_newlines(self, text):
+        """Consolidate consecutive newlines to avoid double empty lines."""
+        # Replace multiple consecutive newlines with a single newline
+        return re.sub(r'\n+', '\n', text)
+
     def _direct_update(self, message, is_error=False):
         """Directly update the text widget (must be called from main thread)."""
         try:
+            # Skip empty messages or messages with only whitespace
+            if not message or message.isspace():
+                return
+
             # Enable editing
             self.text_widget.config(state=tk.NORMAL)
 
             # Add timestamp
             timestamp = datetime.datetime.now().strftime("%H:%M:%S")
 
-            # Format the message
-            if message.endswith('\n'):
-                formatted_message = f"[{timestamp}] {message}"
-            else:
-                formatted_message = f"[{timestamp}] {message}\n"
+            # Format the message - strip any trailing newlines first to avoid double lines
+            message = message.rstrip('\n')
+
+            # Skip empty messages after stripping
+            if not message:
+                return
+
+            # Format with timestamp and ensure single newline
+            formatted_message = self._consolidate_newlines(f"[{timestamp}] {message}\n")
 
             # Set tag for errors (red color)
             tag = "error" if is_error else "normal"
@@ -158,6 +176,10 @@ class LogRedirector:
             """Write to both the original stream and the queue."""
             # Write to the original stream
             self.original_stream.write(string)
+
+            # Skip empty strings or strings with only whitespace
+            if not string or string.isspace():
+                return
 
             # Add to the queue for the text widget
             self.redirector.queue.put((string, self.is_error))

@@ -92,6 +92,9 @@ class FaceTrackingApp:
         self.layout_manager = None
         self.log_redirector = None
 
+        # Track the last number of detected faces to avoid repeated messages
+        self.last_detected_faces_count = 0
+
         if config.USE_TKINTER_LAYOUT:
             self.tk_root = tk.Tk()
             self.tk_root.title("Face Tracking with Eye Contact Detection")
@@ -105,6 +108,10 @@ class FaceTrackingApp:
 
             # Initialize layout manager
             self.layout_manager = LayoutManager(root=self.tk_root, enable_fullscreen=config.ENABLE_FULLSCREEN)
+
+            # Set callbacks for config window and reset config
+            self.layout_manager.set_config_callback(self.toggle_config_window)
+            self.layout_manager.set_reset_config_callback(self.reset_config)
 
             # Set up log redirector
             self.log_redirector = LogRedirector(self.layout_manager.log_text)
@@ -208,7 +215,8 @@ class FaceTrackingApp:
         if hasattr(config, 'ENABLE_CONFIG_WINDOW') and config.ENABLE_CONFIG_WINDOW:
             # Import here to avoid circular import
             from config_window import show_config_window
-            show_config_window()
+            show_config_window(parent_root=self.tk_root)
+            print("Config window toggled")  # Add debug print
 
     def reset_config(self, event=None):
         """Reset configuration to defaults."""
@@ -260,7 +268,11 @@ class FaceTrackingApp:
 
         # Process face detections
         if results.detections:
-            print(f"Detected {len(results.detections)} faces")
+            # Only print when the number of faces changes
+            current_face_count = len(results.detections)
+            if current_face_count != self.last_detected_faces_count:
+                print(f"Detected {current_face_count} faces")
+                self.last_detected_faces_count = current_face_count
 
             for i, detection in enumerate(results.detections):
                 # Get bounding box
@@ -436,6 +448,12 @@ class FaceTrackingApp:
 
                     # Show the face
                     cv2.imshow(window_name, face_img)
+
+        else:
+            # No faces detected, reset the counter if it was non-zero
+            if self.last_detected_faces_count > 0:
+                print("No faces detected")
+                self.last_detected_faces_count = 0
 
         # Check for faces that are no longer detected
         faces_to_remove = []

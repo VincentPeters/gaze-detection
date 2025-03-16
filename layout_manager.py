@@ -4,6 +4,7 @@ import cv2
 import numpy as np
 from PIL import Image, ImageTk
 import threading
+import re
 
 class LayoutManager:
     """
@@ -30,7 +31,7 @@ class LayoutManager:
 
         # Set window title and configure
         self.root.title("Face Tracking with Eye Contact Detection")
-        self.root.configure(background='#333333')
+        self.root.configure(background='#000000')
 
         # Track if we're in fullscreen mode
         self.is_fullscreen = enable_fullscreen
@@ -47,23 +48,27 @@ class LayoutManager:
             height = int(self.screen_height * 0.8)
             self.root.geometry(f"{width}x{height}")
 
-        # Define fixed panel sizes based on window size
-        self.camera_width = int(width * 0.65) if 'width' in locals() else 640
-        self.camera_height = int(height * 0.65) if 'height' in locals() else 480
-        self.face_panel_width = int(width * 0.3) if 'width' in locals() else 320
-        self.face_panel_height = int(height * 0.3) if 'height' in locals() else 240
+        # Define fixed panel sizes based on window size - adjusted for better proportions
+        self.camera_width = int(width * 0.7) if 'width' in locals() else 700  # Increased from 0.65
+        self.camera_height = int(height * 0.7) if 'height' in locals() else 500  # Increased from 0.65
+        self.face_panel_width = int(width * 0.28) if 'width' in locals() else 280  # Decreased from 0.3
+        self.face_panel_height = int(height * 0.7) if 'height' in locals() else 500  # Increased from 0.3
         self.log_panel_height = int(height * 0.25) if 'height' in locals() else 200
 
         # Prevent window from being resized smaller than minimum size
-        min_width = self.camera_width + self.face_panel_width + 50  # Add padding
-        min_height = self.camera_height + self.log_panel_height + 50  # Add padding
+        min_width = self.camera_width + self.face_panel_width + 20  # Reduced padding
+        min_height = self.camera_height + self.log_panel_height + 20  # Reduced padding
         self.root.minsize(min_width, min_height)
 
         # Configure grid layout to be responsive
-        self.root.grid_columnconfigure(0, weight=2, minsize=self.camera_width)  # Camera feed column (wider)
-        self.root.grid_columnconfigure(1, weight=1, minsize=self.face_panel_width)  # Face panels column
-        self.root.grid_rowconfigure(0, weight=2, minsize=self.camera_height)     # Top row (taller)
-        self.root.grid_rowconfigure(1, weight=1, minsize=self.log_panel_height)     # Bottom row
+        self.root.grid_columnconfigure(0, weight=7, minsize=self.camera_width)  # Camera feed column (wider)
+        self.root.grid_columnconfigure(1, weight=3, minsize=self.face_panel_width)  # Face panels column
+        self.root.grid_rowconfigure(0, weight=7, minsize=self.camera_height)     # Top row (taller)
+        self.root.grid_rowconfigure(1, weight=3, minsize=self.log_panel_height)     # Bottom row
+
+        # Callback functions for keyboard shortcuts
+        self.config_callback = None
+        self.reset_config_callback = None
 
         # Create the main panels
         self._create_panels()
@@ -87,8 +92,8 @@ class LayoutManager:
         self.camera_label.config(width=self.camera_width, height=self.camera_height)
 
         # Set fixed sizes for face panels
-        face_width = self.face_panel_width // 2 - 10  # Account for padding
-        face_height = self.camera_height // 2 - 20  # Account for padding and title
+        face_width = self.face_panel_width // 2 - 4  # Reduced padding
+        face_height = self.camera_height // 2 - 4  # Reduced padding
         for label in self.face_labels:
             label.config(width=face_width, height=face_height)
 
@@ -99,25 +104,19 @@ class LayoutManager:
         """Create all the panels in the layout."""
         # Create styles for panels
         style = ttk.Style()
-        style.configure('Panel.TFrame', background='#222222', borderwidth=2, relief='raised')
-        style.configure('PanelTitle.TLabel', background='#333333', foreground='white',
-                        font=('Arial', 10, 'bold'), padding=5)
+        style.configure('Panel.TFrame', background='#000000', borderwidth=1, relief='solid')
 
         # 1. Camera Feed Panel (Top Left)
         self.camera_panel = ttk.Frame(self.root, style='Panel.TFrame')
-        self.camera_panel.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
-
-        # Camera panel title
-        ttk.Label(self.camera_panel, text="LIVE FEED OF THE CAMERA",
-                 style='PanelTitle.TLabel').pack(side=tk.TOP, fill=tk.X)
+        self.camera_panel.grid(row=0, column=0, padx=2, pady=2, sticky="nsew")
 
         # Camera label for displaying the feed (using label instead of canvas)
         self.camera_label = tk.Label(self.camera_panel, bg='black', width=self.camera_width, height=self.camera_height)
-        self.camera_label.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
+        self.camera_label.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)
 
         # 2. Face Tracking Panels (Top Right, 2x2 grid)
         self.face_panel_container = ttk.Frame(self.root, style='Panel.TFrame')
-        self.face_panel_container.grid(row=0, column=1, padx=5, pady=5, sticky="nsew")
+        self.face_panel_container.grid(row=0, column=1, padx=2, pady=2, sticky="nsew")
 
         # Configure the face panel container grid
         self.face_panel_container.grid_columnconfigure(0, weight=1, minsize=self.face_panel_width//2)
@@ -129,33 +128,26 @@ class LayoutManager:
         self.face_panels = []
         self.face_labels = []
 
-        face_titles = ["FACE1 tracking", "FACE2 tracking", "FACE3 tracking", "FACE4 tracking"]
-        face_width = self.face_panel_width // 2 - 10  # Account for padding
-        face_height = self.camera_height // 2 - 20  # Account for padding and title
+        face_width = self.face_panel_width // 2 - 4  # Reduced padding
+        face_height = self.camera_height // 2 - 4  # Reduced padding
 
         for i in range(4):
             row, col = divmod(i, 2)
 
             # Create panel frame
             panel = ttk.Frame(self.face_panel_container, style='Panel.TFrame')
-            panel.grid(row=row, column=col, padx=3, pady=3, sticky="nsew")
-
-            # Panel title
-            ttk.Label(panel, text=face_titles[i], style='PanelTitle.TLabel').pack(side=tk.TOP, fill=tk.X)
+            panel.grid(row=row, column=col, padx=1, pady=1, sticky="nsew")
 
             # Label for face display (using label instead of canvas)
             label = tk.Label(panel, bg='black', width=face_width, height=face_height)
-            label.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
+            label.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)
 
             self.face_panels.append(panel)
             self.face_labels.append(label)
 
         # 3. Logging Panel (Bottom Left)
         self.log_panel = ttk.Frame(self.root, style='Panel.TFrame')
-        self.log_panel.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
-
-        # Log panel title
-        ttk.Label(self.log_panel, text="LOGGING MESSAGES", style='PanelTitle.TLabel').pack(side=tk.TOP, fill=tk.X)
+        self.log_panel.grid(row=1, column=0, padx=2, pady=2, sticky="nsew")
 
         # Text widget for logs with scrollbar
         self.log_text = tk.Text(self.log_panel, bg='#111111', fg='#CCCCCC',
@@ -164,14 +156,11 @@ class LayoutManager:
         self.log_text.configure(yscrollcommand=scrollbar.set)
 
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.log_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=2, pady=2)
+        self.log_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=0, pady=0)
 
         # 4. Empty Panel (Bottom Right) for future features
         self.empty_panel = ttk.Frame(self.root, style='Panel.TFrame')
-        self.empty_panel.grid(row=1, column=1, padx=5, pady=5, sticky="nsew")
-
-        # Empty panel title
-        ttk.Label(self.empty_panel, text="EMPTY PANEL", style='PanelTitle.TLabel').pack(side=tk.TOP, fill=tk.X)
+        self.empty_panel.grid(row=1, column=1, padx=2, pady=2, sticky="nsew")
 
         # Placeholder content
         placeholder = ttk.Label(self.empty_panel, text="Reserved for future features",
@@ -187,8 +176,24 @@ class LayoutManager:
         # Ctrl+Q to quit
         self.root.bind("<Control-q>", lambda e: self.root.quit())
 
+        # 'c' to toggle config window
+        self.root.bind("<c>", self._on_config_key)
+
+        # 'r' to reset config
+        self.root.bind("<r>", self._on_reset_config_key)
+
         # Bind window resize event
         self.root.bind("<Configure>", self._on_window_resize)
+
+    def _on_config_key(self, event):
+        """Handle 'c' key press to toggle config window."""
+        if self.config_callback:
+            self.config_callback(event)
+
+    def _on_reset_config_key(self, event):
+        """Handle 'r' key press to reset config."""
+        if self.reset_config_callback:
+            self.reset_config_callback(event)
 
     def _on_window_resize(self, event):
         """Handle window resize events to update panel sizes proportionally."""
@@ -197,10 +202,10 @@ class LayoutManager:
             # Avoid processing during initialization or when minimized
             if event.width > 100 and event.height > 100:
                 # Update panel size variables based on new window size
-                self.camera_width = int(event.width * 0.65)
-                self.camera_height = int(event.height * 0.65)
-                self.face_panel_width = int(event.width * 0.3)
-                self.face_panel_height = int(event.height * 0.3)
+                self.camera_width = int(event.width * 0.7)
+                self.camera_height = int(event.height * 0.7)
+                self.face_panel_width = int(event.width * 0.28)
+                self.face_panel_height = int(event.height * 0.7)
                 self.log_panel_height = int(event.height * 0.25)
 
                 # Schedule an update of panel sizes (debounced to avoid too many updates)
@@ -236,19 +241,19 @@ class LayoutManager:
         # Update panel sizes after toggling fullscreen
         if self.is_fullscreen:
             # In fullscreen, use screen dimensions
-            self.camera_width = int(self.screen_width * 0.65)
-            self.camera_height = int(self.screen_height * 0.65)
-            self.face_panel_width = int(self.screen_width * 0.3)
-            self.face_panel_height = int(self.screen_height * 0.3)
+            self.camera_width = int(self.screen_width * 0.7)
+            self.camera_height = int(self.screen_height * 0.7)
+            self.face_panel_width = int(self.screen_width * 0.28)
+            self.face_panel_height = int(self.screen_height * 0.7)
             self.log_panel_height = int(self.screen_height * 0.25)
         else:
             # In windowed mode, use 80% of screen
             width = int(self.screen_width * 0.8)
             height = int(self.screen_height * 0.8)
-            self.camera_width = int(width * 0.65)
-            self.camera_height = int(height * 0.65)
-            self.face_panel_width = int(width * 0.3)
-            self.face_panel_height = int(height * 0.3)
+            self.camera_width = int(width * 0.7)
+            self.camera_height = int(height * 0.7)
+            self.face_panel_width = int(width * 0.28)
+            self.face_panel_height = int(height * 0.7)
             self.log_panel_height = int(height * 0.25)
 
         # Schedule an update of panel sizes
@@ -265,10 +270,10 @@ class LayoutManager:
             # Update panel sizes for windowed mode
             width = int(self.screen_width * 0.8)
             height = int(self.screen_height * 0.8)
-            self.camera_width = int(width * 0.65)
-            self.camera_height = int(height * 0.65)
-            self.face_panel_width = int(width * 0.3)
-            self.face_panel_height = int(height * 0.3)
+            self.camera_width = int(width * 0.7)
+            self.camera_height = int(height * 0.7)
+            self.face_panel_width = int(width * 0.28)
+            self.face_panel_height = int(height * 0.7)
             self.log_panel_height = int(height * 0.25)
 
             # Schedule an update of panel sizes
@@ -292,11 +297,11 @@ class LayoutManager:
 
             # Use fixed dimensions for consistent sizing
             panel_width = self.camera_width
-            panel_height = self.camera_height - 30  # Subtract title height
+            panel_height = self.camera_height
 
             frame_height, frame_width = rgb_frame.shape[:2]
 
-            # Calculate scaling factor to fit within panel
+            # Calculate scaling factor to fit within panel while maximizing size
             scale_width = panel_width / frame_width
             scale_height = panel_height / frame_height
             scale = min(scale_width, scale_height)
@@ -308,8 +313,22 @@ class LayoutManager:
             # Resize the frame
             resized_frame = cv2.resize(rgb_frame, (new_width, new_height))
 
+            # Create a black background image of panel size
+            background = np.zeros((panel_height, panel_width, 3), dtype=np.uint8)
+
+            # Calculate position to center the resized frame
+            y_offset = (panel_height - new_height) // 2
+            x_offset = (panel_width - new_width) // 2
+
+            # Place the resized frame on the black background
+            if y_offset >= 0 and x_offset >= 0:
+                background[y_offset:y_offset+new_height, x_offset:x_offset+new_width] = resized_frame
+            else:
+                # If the frame is larger than the panel, just use the resized frame
+                background = resized_frame
+
             # Convert to PIL Image and then to PhotoImage
-            pil_image = Image.fromarray(resized_frame)
+            pil_image = Image.fromarray(background)
             self.camera_image = ImageTk.PhotoImage(image=pil_image)
 
             # Update label with new image
@@ -343,8 +362,8 @@ class LayoutManager:
                           circle_radius, (255, 0, 0), -1)
 
             # Use fixed dimensions for consistent sizing
-            face_width = self.face_panel_width // 2 - 10  # Account for padding
-            face_height = self.camera_height // 2 - 20  # Account for padding and title
+            face_width = self.face_panel_width // 2 - 4  # Reduced padding
+            face_height = self.camera_height // 2 - 4  # Reduced padding
 
             # Resize the face frame to fit the panel while maintaining aspect ratio
             frame_height, frame_width = rgb_frame.shape[:2]
@@ -361,8 +380,22 @@ class LayoutManager:
             # Resize the frame
             resized_frame = cv2.resize(rgb_frame, (new_width, new_height))
 
+            # Create a black background image of panel size
+            background = np.zeros((face_height, face_width, 3), dtype=np.uint8)
+
+            # Calculate position to center the resized frame
+            y_offset = (face_height - new_height) // 2
+            x_offset = (face_width - new_width) // 2
+
+            # Place the resized frame on the black background
+            if y_offset >= 0 and x_offset >= 0:
+                background[y_offset:y_offset+new_height, x_offset:x_offset+new_width] = resized_frame
+            else:
+                # If the frame is larger than the panel, just use the resized frame
+                background = resized_frame
+
             # Convert to PIL Image and then to PhotoImage
-            pil_image = Image.fromarray(resized_frame)
+            pil_image = Image.fromarray(background)
             self.face_images[face_index] = ImageTk.PhotoImage(image=pil_image)
 
             # Update label with new image
@@ -396,13 +429,29 @@ class LayoutManager:
             message: The message to add
         """
         try:
+            # Skip empty messages or messages with only whitespace
+            if not message or message.isspace():
+                return
+
             # Enable text widget for editing
             self.log_text.configure(state=tk.NORMAL)
 
             # Add message with timestamp
             import datetime
             timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+
+            # Strip any trailing newlines to avoid double lines
+            message = message.rstrip('\n')
+
+            # Skip empty messages after stripping
+            if not message:
+                return
+
+            # Format with timestamp and ensure single newline
             formatted_message = f"[{timestamp}] {message}\n"
+
+            # Replace multiple consecutive newlines with a single newline
+            formatted_message = re.sub(r'\n+', '\n', formatted_message)
 
             # Insert at end and scroll to see it
             self.log_text.insert(tk.END, formatted_message)
@@ -460,6 +509,14 @@ class LayoutManager:
             self.root.quit()
         except Exception as e:
             print(f"Error quitting: {e}")
+
+    def set_config_callback(self, callback):
+        """Set the callback function for the config window toggle."""
+        self.config_callback = callback
+
+    def set_reset_config_callback(self, callback):
+        """Set the callback function for the config reset."""
+        self.reset_config_callback = callback
 
 
 # Simple test function to demonstrate the layout

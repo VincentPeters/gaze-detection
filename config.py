@@ -9,6 +9,11 @@ VIDEOS_DIR = "eye_contact_videos"
 SCREENSHOTS_DIR = "eye_contact_screenshots"
 FACES_DIR = "faces"
 
+# UI settings
+ENABLE_CONFIG_WINDOW = True  # Enable/disable the configuration window
+USE_TKINTER_LAYOUT = True  # Use Tkinter layout instead of OpenCV windows
+ENABLE_FULLSCREEN = False  # Start in fullscreen mode
+
 # Eye contact detection settings
 EYE_CONTACT_THRESHOLD = 0.3  # Lowered from 0.5 to be less strict
 FACE_MARGIN_PERCENT = 60  # Percentage of margin to add around detected faces
@@ -62,8 +67,6 @@ DISPLAY_FPS = 15  # Target FPS for display (lower = less CPU usage)
 ENABLE_THREADING = True  # Use threading for face detection to improve responsiveness
 
 # Layout settings (new)
-USE_TKINTER_LAYOUT = True  # Whether to use the new Tkinter layout
-ENABLE_FULLSCREEN = False  # Whether to start in fullscreen mode
 LAYOUT_THEME = 'dark'  # UI theme (dark or light)
 
 # Layout colors (new)
