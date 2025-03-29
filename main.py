@@ -8,7 +8,7 @@ from datetime import datetime
 import threading
 import queue
 import config  # Import the configuration file
-from config_window import ConfigWindow  # Import the configuration window
+from config_window import ConfigWindow, show_config_window  # Import the configuration window
 import tkinter as tk  # Import tkinter for the new layout
 from log_redirect import LogRedirector
 
@@ -107,26 +107,12 @@ class FaceTrackingApp:
             self.tk_root = tk.Tk()
             self.tk_root.title("Face Tracking with Eye Contact Detection")
 
-            # Set initial window size (80% of screen)
-            screen_width = self.tk_root.winfo_screenwidth()
-            screen_height = self.tk_root.winfo_screenheight()
-            width = int(screen_width * 0.8)
-            height = int(screen_height * 0.8)
-            self.tk_root.geometry(f"{width}x{height}")
+            # Show config window immediately on startup
+            self.tk_root.withdraw()  # Hide the main window temporarily
+            show_config_window(parent_root=self.tk_root, show_on_startup=True)
 
-            # Initialize layout manager
-            self.layout_manager = LayoutManager(root=self.tk_root, enable_fullscreen=config.ENABLE_FULLSCREEN)
-
-            # Set callbacks for config window and reset config
-            self.layout_manager.set_config_callback(self.toggle_config_window)
-            self.layout_manager.set_reset_config_callback(self.reset_config)
-
-            # Set up log redirector
-            self.log_redirector = LogRedirector(self.layout_manager.log_text)
-            self.log_redirector.start_redirect()
-
-            # Process initial events to ensure widgets are properly initialized
-            self.tk_root.update_idletasks()
+            # Bind keyboard shortcuts
+            self.tk_root.bind('<q>', self.quit_app)
 
         # Print configuration information
         print(f"Using device: CPU")
@@ -158,20 +144,15 @@ class FaceTrackingApp:
         print(f"Face margin: {config.FACE_MARGIN_PERCENT}% of original size")
         print(f"Saving videos in MP4 format")
         print(f"High-resolution screenshots: {'Enabled' if config.HIGH_RES_ENABLED else 'Disabled'}")
-        print(f"Dynamic configuration window enabled. Press 'c' to toggle configuration window, 'r' to reset settings.")
-
-        if self.layout_manager:
-            print(f"Using Tkinter layout: {'Enabled' if config.USE_TKINTER_LAYOUT else 'Disabled'}")
-            print(f"Fullscreen mode: {'Enabled' if config.ENABLE_FULLSCREEN else 'Disabled'}")
-            print(f"Layout theme: {config.LAYOUT_THEME}")
+        print(f"Local windows: Disabled (streaming only)")
 
         # Initialize streaming server if enabled
         if config.ENABLE_STREAMING:
             self.streaming_server = StreamingServer(self.stream_buffer, port=config.STREAMING_PORT)
             self.streaming_server.start()
+            print(f"Streaming server started at http://0.0.0.0:{config.STREAMING_PORT}")
             print(f"Streaming server started at http://localhost:{config.STREAMING_PORT}")
             print(f"Streaming quality: {config.STREAM_QUALITY}%")
-            print(f"Local preview: {'Disabled' if config.DISABLE_LOCAL_PREVIEW else 'Enabled'}")
 
         # Initialize MediaPipe face detection
         mp_face_detection = mp.solutions.face_detection
@@ -185,11 +166,6 @@ class FaceTrackingApp:
 
         # Dictionary to track active face windows
         self.active_faces = {}
-
-        # Position the main window (only if not using Tkinter layout)
-        if not self.layout_manager:
-            cv2.namedWindow(config.MAIN_WINDOW_NAME)
-            cv2.moveWindow(config.MAIN_WINDOW_NAME, *config.MAIN_WINDOW_POSITION)
 
         # Initialize eye contact detector
         self.eye_contact_detector = EyeContactDetector(model_path=config.MODEL_PATH)
@@ -211,13 +187,8 @@ class FaceTrackingApp:
         # Flag to indicate if the application should quit
         self.should_quit = False
 
-        # Bind keyboard shortcuts if using Tkinter
+        # Schedule the first frame processing if using Tkinter
         if self.tk_root:
-            self.tk_root.bind('<q>', self.quit_app)
-            self.tk_root.bind('<c>', self.toggle_config_window)
-            self.tk_root.bind('<r>', self.reset_config)
-
-            # Schedule the first frame processing
             self.tk_root.after(10, self.process_frame)
 
     def quit_app(self, event=None):
@@ -225,20 +196,6 @@ class FaceTrackingApp:
         self.should_quit = True
         if self.tk_root:
             self.tk_root.quit()
-
-    def toggle_config_window(self, event=None):
-        """Toggle the configuration window."""
-        if hasattr(config, 'ENABLE_CONFIG_WINDOW') and config.ENABLE_CONFIG_WINDOW:
-            # Import here to avoid circular import
-            from config_window import show_config_window
-            show_config_window(parent_root=self.tk_root)
-            print("Config window toggled")  # Add debug print
-
-    def reset_config(self, event=None):
-        """Reset configuration to defaults."""
-        if hasattr(config, 'ENABLE_CONFIG_WINDOW') and config.ENABLE_CONFIG_WINDOW:
-            config.reset_config()
-            print("Configuration reset to defaults")
 
     def process_frame(self):
         """Process a single frame from the camera."""
@@ -330,10 +287,6 @@ class FaceTrackingApp:
                 # Update last seen time for this face
                 self.last_seen_time[face_id] = time.time()
 
-                # Update stream buffer with face frame
-                if config.ENABLE_STREAMING and self.streaming_server:
-                    self.stream_buffer.update_frame(face_id, face_img.copy())
-
                 # Draw bounding box on the display frame
                 cv2.rectangle(display_frame, (xmin, ymin), (xmin + width, ymin + height), (0, 255, 0), 2)
 
@@ -350,6 +303,39 @@ class FaceTrackingApp:
                 cv2.putText(display_frame, status_text, (xmin, ymin + height + 20),
                            cv2.FONT_HERSHEY_SIMPLEX, 0.5,
                            (0, 255, 0) if has_eye_contact else (0, 0, 255), 1)
+
+                # Create a copy of face_img with eye contact indicator
+                face_img_with_indicators = face_img.copy()
+
+                # Add a colored border to indicate eye contact status
+                border_color = (0, 255, 0) if has_eye_contact else (0, 0, 255)  # Green for eye contact, red otherwise
+                border_thickness = 3
+                h, w = face_img_with_indicators.shape[:2]
+                cv2.rectangle(face_img_with_indicators, (0, 0), (w-1, h-1), border_color, border_thickness)
+
+                # Add eye contact indicator text
+                indicator_color = (0, 255, 0) if has_eye_contact else (0, 0, 255)
+                status_text = f"Eye Contact: {eye_contact_score:.2f}"
+                cv2.putText(face_img_with_indicators, status_text,
+                           (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, indicator_color, 2)
+                cv2.putText(face_img_with_indicators, face_id,
+                           (10, h - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+
+                # If recording, add recording indicator to the face image
+                is_recording = face_id in self.face_recorders and self.face_recorders[face_id].is_recording()
+                if is_recording:
+                    # Draw red circle in top-right corner to indicate recording
+                    circle_radius = 12
+                    cv2.circle(face_img_with_indicators,
+                              (w - circle_radius - 15, circle_radius + 15),
+                              circle_radius, (0, 0, 255), -1)
+                    # Add REC text
+                    cv2.putText(face_img_with_indicators, "REC",
+                               (w - 50, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+
+                # Update stream buffer with face frame including indicators
+                if config.ENABLE_STREAMING and self.streaming_server:
+                    self.stream_buffer.update_frame(face_id, face_img_with_indicators)
 
                 # Track eye contact status changes
                 if face_id not in self.eye_contact_status:
@@ -443,36 +429,6 @@ class FaceTrackingApp:
                 if face_id in self.face_recorders and self.face_recorders[face_id].is_recording():
                     self.face_recorders[face_id].add_frame(face_img)
 
-                # Display face in a separate window or panel
-                is_recording = face_id in self.face_recorders and self.face_recorders[face_id].is_recording()
-
-                # If using Tkinter layout, update the face panel
-                if self.layout_manager:
-                    # Use the face index (0-3) for the panel
-                    face_index = min(i, 3)  # Limit to 4 panels (0-3)
-                    self.layout_manager.update_face_panel(face_index, face_img, is_recording)
-                elif not config.DISABLE_LOCAL_PREVIEW:
-                    # Create or update OpenCV window for this face
-                    window_name = f"Face {i+1}"
-                    if window_name not in self.active_faces:
-                        cv2.namedWindow(window_name)
-                        # Position windows in a grid
-                        row, col = divmod(len(self.active_faces), 2)
-                        x_pos = config.MAIN_WINDOW_POSITION[0] + config.DISPLAY_WIDTH + 30 + col * 220
-                        y_pos = config.MAIN_WINDOW_POSITION[1] + row * 220
-                        cv2.moveWindow(window_name, x_pos, y_pos)
-                        self.active_faces[window_name] = face_id
-
-                    # Add recording indicator if recording
-                    if is_recording:
-                        # Draw red circle in top-right corner
-                        circle_radius = 10
-                        cv2.circle(face_img, (face_img.shape[1] - circle_radius - 10, circle_radius + 10),
-                                  circle_radius, (0, 0, 255), -1)
-
-                    # Show the face
-                    cv2.imshow(window_name, face_img)
-
         else:
             # No faces detected, reset the counter if it was non-zero
             if self.last_detected_faces_count > 0:
@@ -483,76 +439,34 @@ class FaceTrackingApp:
         faces_to_remove = []
         for window_name, face_id in self.active_faces.items():
             if face_id not in current_faces:
-                # Check if face has been gone long enough to close the window
+                # Check if face has been gone long enough
                 if (face_id in self.last_seen_time and
                     time.time() - self.last_seen_time[face_id] > config.FACE_REDETECTION_TIMEOUT):
-                    # Close the window if not using Tkinter
-                    if not self.layout_manager:
-                        cv2.destroyWindow(window_name)
                     faces_to_remove.append(window_name)
 
                     # Stop any ongoing recording
                     if face_id in self.face_recorders and self.face_recorders[face_id].is_recording():
                         self.face_recorders[face_id].stop_recording()
 
-        # Remove closed windows from tracking
+        # Remove tracking for faces that are no longer visible
         for window_name in faces_to_remove:
             face_id = self.active_faces[window_name]
             del self.active_faces[window_name]
 
-            # Clear the face panel in Tkinter layout
-            if self.layout_manager:
-                # Find the panel index for this face
-                for i in range(4):
-                    if f"face_{i+1}" == face_id:
-                        self.layout_manager.clear_face_panel(i)
-                        break
+        # Stream the main feed regardless of local preview settings
+        if config.ENABLE_STREAMING and self.streaming_server:
+            self.stream_buffer.update_frame('main', display_frame)
 
-        # Display the main frame
-        if self.layout_manager:
-            # Update the camera feed in Tkinter
-            self.layout_manager.update_camera_feed(display_frame)
-        elif not config.DISABLE_LOCAL_PREVIEW:
-            # Show in OpenCV window
-            cv2.imshow(config.MAIN_WINDOW_NAME, display_frame)
-
-            # Check for key press in OpenCV window
+        # Process keyboard events for quitting
+        if not self.tk_root:
             key = cv2.waitKey(1) & 0xFF
-
-            # 'q' to quit
             if key == ord('q'):
                 self.quit_app()
                 return
 
-            # 'c' to toggle configuration window
-            if key == ord('c') and hasattr(config, 'ENABLE_CONFIG_WINDOW') and config.ENABLE_CONFIG_WINDOW:
-                self.toggle_config_window()
-
-            # 'r' to reset configuration
-            if key == ord('r') and hasattr(config, 'ENABLE_CONFIG_WINDOW') and config.ENABLE_CONFIG_WINDOW:
-                self.reset_config()
-
         # Schedule the next frame processing if using Tkinter
         if self.tk_root and not self.should_quit:
             self.tk_root.after(10, self.process_frame)
-
-    def run(self):
-        """Run the application."""
-        if self.tk_root:
-            # Start the Tkinter main loop
-            self.tk_root.mainloop()
-        else:
-            # Run the OpenCV main loop
-            while not self.should_quit:
-                self.process_frame()
-
-                # Break if 'q' is pressed
-                key = cv2.waitKey(1) & 0xFF
-                if key == ord('q'):
-                    break
-
-        # Clean up
-        self.cleanup()
 
     def cleanup(self):
         """Clean up resources."""
@@ -564,20 +478,30 @@ class FaceTrackingApp:
             self.streaming_server.stop()
             print("Streaming server stopped")
 
-        # Close all OpenCV windows if not using Tkinter
-        if not self.layout_manager:
-            cv2.destroyAllWindows()
-        else:
-            # Stop log redirection
-            if self.log_redirector:
-                self.log_redirector.stop_redirect()
-
         # Stop any ongoing recordings
         for face_id, recorder in self.face_recorders.items():
             if recorder.is_recording():
                 recorder.stop_recording()
 
         print("Application closed")
+
+    def run(self):
+        """Run the application."""
+        if self.tk_root:
+            # Start the Tkinter main loop
+            self.tk_root.mainloop()
+        else:
+            # Run the main loop without Tkinter
+            while not self.should_quit:
+                self.process_frame()
+
+                # Break if 'q' is pressed
+                key = cv2.waitKey(1) & 0xFF
+                if key == ord('q'):
+                    break
+
+        # Clean up
+        self.cleanup()
 
 def main():
     app = FaceTrackingApp()

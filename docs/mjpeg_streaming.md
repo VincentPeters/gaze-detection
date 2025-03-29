@@ -1,103 +1,73 @@
-# MJPEG Streaming Implementation Plan
+# MJPEG Streaming Implementation
+
+This document outlines the implementation of MJPEG streaming in the face detection application.
 
 ## Overview
 
-This document outlines the plan to add browser-based video streaming to the face detection application using MJPEG over HTTP with Flask. The implementation will enable users to view the main camera feed and individual face feeds in a web browser.
+The application now operates exclusively through web streaming, with no local OpenCV or Tkinter windows. This provides better performance and enables remote viewing of the face detection system.
 
-## Requirements
+## Configuration Options
 
-- Stream main camera feed and individual face feeds to a browser
-- Target resolution: 1080p where possible
-- Local access only (no authentication required)
-- Option to disable local preview windows while keeping streaming active
-- Minimal changes to existing codebase
+In `config.py`, the following options control the streaming behavior:
 
-## Implementation Plan
+- `ENABLE_STREAMING = True`: Enables the MJPEG streaming server
+- `STREAMING_PORT = 8080`: The port on which the streaming server runs (default: 8080)
+- `DISABLE_LOCAL_PREVIEW = True`: Local preview windows are disabled by default
+- `STREAM_QUALITY = 90`: JPEG quality for streams (0-100)
 
-### 1. Frame Sharing Mechanism ✅
+## Implementation Details
 
-**Files to modify:**
-- `main.py` - Add frame buffer for sharing frames with streaming component ✅
+### Stream Buffer
 
-**New files:**
-- `stream_buffer.py` - Thread-safe buffer to hold frames for streaming ✅
+The `stream_buffer.py` file implements a thread-safe buffer for frames:
 
-**Tasks:**
-- Implement a thread-safe frame buffer class ✅
-- Modify `process_frame()` method to store frames in the buffer ✅
-- Ensure buffer updates don't impact performance ✅
-
-### 2. Flask Server Implementation ✅
-
-**New files:**
-- `streaming_server.py` - Flask application with streaming endpoints ✅
-- `templates/index.html` - Web UI for displaying streams ✅
-
-**Tasks:**
-- Create Flask application with routes for each stream ✅
-- Implement MJPEG encoding and streaming functionality ✅
-- Create HTML template for the web interface ✅
-- Add static CSS for layout and styling ✅
-
-### 3. Integration and Configuration ✅
-
-**Files to modify:**
-- `config.py` - Add streaming configuration options ✅
-- `main.py` - Initialize and start streaming server ✅
-
-**Tasks:**
-- Add configuration options for streaming (port, enable/disable) ✅
-- Add option to disable local preview windows ✅
-- Integrate Flask server startup into the main application ✅
-- Ensure clean shutdown of streaming server ✅
-
-### 4. Web UI Implementation ✅
-
-**New files:**
-- `templates/index.html` - Main page template ✅
-- `static/css/style.css` - Styling for the web interface ✅
-
-**Tasks:**
-- Create responsive layout for multiple video streams ✅
-- Add basic styling and layout ✅
-- Display stream status and application info ✅
-
-## Technical Details
-
-### Frame Buffer Architecture
-- Thread-safe queue or circular buffer for each stream
-- Configurable max buffer size to manage memory usage
-- Independent buffers for main feed and face feeds
+- Uses a dictionary of queues to store frames for each stream
+- Each stream (main camera and individual faces) has its own buffer
+- Thread-safe operations for updating and retrieving frames
 
 ### Streaming Server
-- Run in a dedicated thread within the main process
-- Flask routes for:
-  - `/` - Main web interface
-  - `/video_feed` - Main camera MJPEG stream
-  - `/face_feed/<face_id>` - Individual face MJPEG streams
-  - `/status` - Simple status endpoint
 
-### Configuration Options
-```
-# Streaming configuration
-ENABLE_STREAMING = True  # Enable/disable streaming server
-STREAMING_PORT = 5000    # Port for the streaming server
-DISABLE_LOCAL_PREVIEW = False  # Disable local preview windows but keep streaming
-STREAM_QUALITY = 90      # JPEG quality for streams (0-100)
-```
+The `streaming_server.py` file implements a Flask server for MJPEG streaming:
 
-## Implementation Sequence
+- Runs in a separate thread to avoid blocking the main application
+- Provides routes for the main web interface and individual video feeds
+- Serves a responsive web UI that displays all streams
 
-1. Implement frame buffer mechanism ✅
-2. Create basic Flask server with main feed streaming ✅
-3. Add face feed streaming ✅
-4. Implement configuration options ✅
-5. Create web UI ✅
-6. Test and optimize performance
+### Visual Indicators
+
+The streamed video includes enhanced visual indicators:
+
+1. **Main Feed Indicators**:
+   - Bounding boxes around detected faces
+   - Eye contact status text
+
+2. **Face Feed Indicators**:
+   - Color-coded borders (green for eye contact, red otherwise)
+   - Bold text showing eye contact score
+   - Face ID label
+   - "REC" indicator when recording
+
+## Running the Application
+
+To run the application with streaming:
+
+1. Start the application: `python main.py`
+2. Open a web browser and navigate to `http://localhost:8080`
+
+## Performance Considerations
+
+- The application may perform better now that it's not rendering local windows
+- Streaming quality can be adjusted in the config file to reduce CPU usage
+- Multiple clients can connect to the streaming server simultaneously
+
+## Troubleshooting
+
+- If you see an "Address already in use" error, change the `STREAMING_PORT` value in `config.py`
+- Make sure your firewall allows connections on the configured port if accessing remotely
 
 ## Future Improvements
 
-- WebRTC for lower latency (potential future upgrade)
-- WebSocket for bidirectional communication
-- Stream quality control in the web interface
-- Recording controls in the web interface
+- Add authentication for the web interface
+- Implement WebRTC for lower latency streaming
+- Add stream selection options in the web UI
+- Implement recording controls in the web interface

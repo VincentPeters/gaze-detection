@@ -16,8 +16,8 @@ ENABLE_FULLSCREEN = False  # Start in fullscreen mode
 
 # Streaming settings
 ENABLE_STREAMING = True  # Enable/disable streaming server
-STREAMING_PORT = 5000    # Port for the streaming server
-DISABLE_LOCAL_PREVIEW = False  # Disable local preview windows but keep streaming
+STREAMING_PORT = 8080    # Port for the streaming server (changed from 5000 to avoid conflicts)
+DISABLE_LOCAL_PREVIEW = True  # Disable local preview windows but keep streaming
 STREAM_QUALITY = 90      # JPEG quality for streams (0-100)
 
 # Eye contact detection settings

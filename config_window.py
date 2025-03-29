@@ -17,7 +17,7 @@ class ConfigWindow:
             self.root = tk.Toplevel(parent_root)
 
         self.root.title("Detection Settings")
-        self.root.geometry("300x600")  # Reduced width from 800 to 600
+        self.root.geometry("800x600")  # Reduced width from 800 to 600
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
         self.root.withdraw()  # Hide window initially
 
@@ -29,6 +29,12 @@ class ConfigWindow:
             # Capture settings section
             {"name": "Enable Video Capture", "config_key": "VIDEO_CAPTURE_ENABLED", "min": 0, "max": 1, "scale": 1, "type": "bool"},
             {"name": "Enable Image Capture", "config_key": "IMAGE_CAPTURE_ENABLED", "min": 0, "max": 1, "scale": 1, "type": "bool"},
+
+            # Streaming settings section
+            {"name": "Enable Streaming", "config_key": "ENABLE_STREAMING", "min": 0, "max": 1, "scale": 1, "type": "bool"},
+            {"name": "Streaming Port", "config_key": "STREAMING_PORT", "min": 1000, "max": 9999, "scale": 1, "type": "int"},
+            {"name": "Disable Local Preview", "config_key": "DISABLE_LOCAL_PREVIEW", "min": 0, "max": 1, "scale": 1, "type": "bool"},
+            {"name": "Stream Quality", "config_key": "STREAM_QUALITY", "min": 10, "max": 100, "scale": 1, "type": "int"},
 
             # Face detection settings
             {"name": "Face Confidence", "config_key": "FACE_DETECTION_CONFIDENCE", "min": 0, "max": 1, "scale": 0.01, "type": "float"},
@@ -107,10 +113,16 @@ class ConfigWindow:
         New features:
         - Enable/disable video recording
         - Enable/disable screenshot capturing
+        - MJPEG streaming to web browsers
+        - Option to disable local preview while streaming
 
         Keyboard shortcuts:
         - 'c' - Toggle this configuration window
         - 'r' - Reset all settings to defaults
+
+        Streaming:
+        Access the video streams in your browser at:
+        http://localhost:5000 (or configured port)
         """
         about_label = ttk.Label(self.about_frame, text=about_text, justify=tk.LEFT)
         about_label.pack(padx=20, pady=20)
@@ -130,9 +142,10 @@ class ConfigWindow:
         # Group settings by category
         categories = [
             {"name": "Capture Settings", "items": [0, 1]},  # Indices of capture settings
-            {"name": "Face Detection", "items": [2, 3, 4, 5, 6]},  # Indices of face detection settings
-            {"name": "Timing", "items": [7, 8, 9]},  # Indices of timing settings
-            {"name": "Performance", "items": [10, 11, 12, 13, 14]}  # Indices of performance settings
+            {"name": "Streaming Settings", "items": [2, 3, 4, 5]},  # Indices of streaming settings
+            {"name": "Face Detection", "items": [6, 7, 8, 9, 10]},  # Indices of face detection settings
+            {"name": "Timing", "items": [11, 12, 13]},  # Indices of timing settings
+            {"name": "Performance", "items": [14, 15, 16, 17, 18]}  # Indices of performance settings
         ]
 
         # Create sliders by category
@@ -398,6 +411,19 @@ class ConfigWindow:
         """Apply current settings."""
         messagebox.showinfo("Settings Applied", "Settings have been applied.")
 
+    def start_application(self):
+        """Hide the config window and continue with application startup."""
+        # Apply settings first
+        self.apply_settings()
+
+        # Hide config window but don't destroy it
+        self.root.withdraw()
+        self.is_visible = False
+
+        # Deiconify the main application window to continue startup
+        if self.root.master:
+            self.root.master.deiconify()
+
     def toggle_visibility(self):
         """Toggle the visibility of the configuration window."""
         if self.is_visible:
@@ -429,11 +455,12 @@ class ConfigWindow:
 # Create a global instance of the configuration window
 config_window_instance = None
 
-def show_config_window(parent_root=None):
+def show_config_window(parent_root=None, show_on_startup=False):
     """Show or hide the configuration window.
 
     Args:
         parent_root: Optional parent Tkinter root window.
+        show_on_startup: If True, show the window and don't auto-hide it.
     """
     global config_window_instance
 
@@ -441,7 +468,33 @@ def show_config_window(parent_root=None):
     if config_window_instance is None:
         config_window_instance = ConfigWindow(parent_root)
 
-    # Toggle visibility
-    config_window_instance.toggle_visibility()
+    # Always show the window
+    config_window_instance.root.deiconify()
+    config_window_instance.is_visible = True
+    config_window_instance.update_sliders()  # Refresh values when showing
+
+    # If showing on startup, don't auto-hide the window
+    if show_on_startup:
+        # Add a label to the top of the window indicating this is the main control panel
+        startup_label = ttk.Label(
+            config_window_instance.root,
+            text="Face Detection Control Panel - Configure settings and press Apply to start",
+            font=("Helvetica", 12, "bold")
+        )
+        startup_label.pack(before=config_window_instance.notebook, pady=10)
+
+        # Change the behavior of the Apply button to start the application
+        for widget in config_window_instance.root.winfo_children():
+            if isinstance(widget, ttk.Frame) and widget.winfo_children():
+                for child in widget.winfo_children():
+                    if isinstance(child, ttk.Button) and child.cget('text') == "Apply":
+                        child.configure(text="Apply & Start Application")
+                        child.configure(command=lambda: config_window_instance.start_application())
 
     return config_window_instance
+
+def update_config_window():
+    """Update the configuration window if it exists."""
+    global config_window_instance
+    if config_window_instance is not None:
+        config_window_instance.update_window()
