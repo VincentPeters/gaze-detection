@@ -41,6 +41,7 @@ class ConfigWindow:
             {"name": "Face Model", "config_key": "FACE_DETECTION_MODEL", "min": 0, "max": 1, "scale": 1, "type": "int", "options": ["Close Range", "Full Range"]},
             {"name": "Face Margin Percentage", "config_key": "FACE_MARGIN_PERCENT", "min": 0, "max": 100, "scale": 1, "type": "int"},
             {"name": "Redetection Time (seconds)", "config_key": "FACE_REDETECTION_TIMEOUT", "min": 0, "max": 5, "scale": 0.1, "type": "float"},
+            {"name": "Face Persistence (frames)", "config_key": "FACE_PERSISTENCE_FRAMES", "min": 0, "max": 30, "scale": 1, "type": "int"},
             {"name": "Eye Contact Threshold", "config_key": "EYE_CONTACT_THRESHOLD", "min": 0, "max": 1, "scale": 0.01, "type": "float"},
 
             # Timing settings
@@ -52,8 +53,7 @@ class ConfigWindow:
             {"name": "High Resolution", "config_key": "HIGH_RES_ENABLED", "min": 0, "max": 1, "scale": 1, "type": "bool"},
             {"name": "Video FPS", "config_key": "VIDEO_FPS", "min": 5, "max": 60, "scale": 1, "type": "int"},
             {"name": "Process Width (pixels)", "config_key": "PROCESSING_WIDTH", "min": 160, "max": 640, "scale": 1, "type": "int"},
-            {"name": "Process Height (pixels)", "config_key": "PROCESSING_HEIGHT", "min": 120, "max": 480, "scale": 1, "type": "int"},
-            {"name": "Frame Interval (frames)", "config_key": "FRAME_PROCESSING_INTERVAL", "min": 1, "max": 10, "scale": 1, "type": "int"}
+            {"name": "Process Height (pixels)", "config_key": "PROCESSING_HEIGHT", "min": 120, "max": 480, "scale": 1, "type": "int"}
         ]
 
         # Create the UI elements
@@ -115,14 +115,16 @@ class ConfigWindow:
         - Enable/disable screenshot capturing
         - MJPEG streaming to web browsers
         - Option to disable local preview while streaming
+        - Face tracking persistence to reduce flickering
 
         Keyboard shortcuts:
-        - 'c' - Toggle this configuration window
-        - 'r' - Reset all settings to defaults
+        - 'q' - Quit the application
 
         Streaming:
         Access the video streams in your browser at:
-        http://localhost:5000 (or configured port)
+        http://localhost:8080
+
+        Adjust the streaming port in settings if needed.
         """
         about_label = ttk.Label(self.about_frame, text=about_text, justify=tk.LEFT)
         about_label.pack(padx=20, pady=20)

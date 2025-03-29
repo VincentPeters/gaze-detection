@@ -103,6 +103,11 @@ class FaceTrackingApp:
         # Track the last number of detected faces to avoid repeated messages
         self.last_detected_faces_count = 0
 
+        # Add persistence for face tracking to reduce flickering
+        self.persistent_faces = {}
+        self.face_persistence_frames = config.FACE_PERSISTENCE_FRAMES  # Use config value instead of hardcoded value
+        self.face_persistence_counters = {}
+
         if config.USE_TKINTER_LAYOUT:
             self.tk_root = tk.Tk()
             self.tk_root.title("Face Tracking with Eye Contact Detection")
@@ -243,6 +248,11 @@ class FaceTrackingApp:
         # Set of currently detected face IDs
         current_faces = set()
 
+        # Increase persistence counter for all faces before processing new detections
+        for face_id in self.persistent_faces:
+            if face_id in self.face_persistence_counters:
+                self.face_persistence_counters[face_id] += 1
+
         # Process face detections
         if results.detections:
             # Only print when the number of faces changes
@@ -287,6 +297,22 @@ class FaceTrackingApp:
                 # Update last seen time for this face
                 self.last_seen_time[face_id] = time.time()
 
+                # Reset persistence counter for this face
+                self.face_persistence_counters[face_id] = 0
+
+                # Store face image and data in persistent faces dictionary
+                self.persistent_faces[face_id] = {
+                    'face_img': face_img.copy(),
+                    'xmin': xmin,
+                    'ymin': ymin,
+                    'width': width,
+                    'height': height,
+                    'xmin_expanded': xmin_expanded,
+                    'ymin_expanded': ymin_expanded,
+                    'width_expanded': width_expanded,
+                    'height_expanded': height_expanded
+                }
+
                 # Draw bounding box on the display frame
                 cv2.rectangle(display_frame, (xmin, ymin), (xmin + width, ymin + height), (0, 255, 0), 2)
 
@@ -297,6 +323,10 @@ class FaceTrackingApp:
                 # Detect eye contact
                 eye_contact_score = self.eye_contact_detector.predict_eye_contact_probability(face_img)
                 has_eye_contact = eye_contact_score > config.EYE_CONTACT_THRESHOLD
+
+                # Store eye contact data in persistent faces
+                self.persistent_faces[face_id]['eye_contact_score'] = eye_contact_score
+                self.persistent_faces[face_id]['has_eye_contact'] = has_eye_contact
 
                 # Draw eye contact status
                 status_text = f"Eye contact: {eye_contact_score:.2f}"
@@ -324,6 +354,9 @@ class FaceTrackingApp:
                 # If recording, add recording indicator to the face image
                 is_recording = face_id in self.face_recorders and self.face_recorders[face_id].is_recording()
                 if is_recording:
+                    # Store recording state in persistent faces
+                    self.persistent_faces[face_id]['is_recording'] = True
+
                     # Draw red circle in top-right corner to indicate recording
                     circle_radius = 12
                     cv2.circle(face_img_with_indicators,
@@ -332,6 +365,8 @@ class FaceTrackingApp:
                     # Add REC text
                     cv2.putText(face_img_with_indicators, "REC",
                                (w - 50, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+                else:
+                    self.persistent_faces[face_id]['is_recording'] = False
 
                 # Update stream buffer with face frame including indicators
                 if config.ENABLE_STREAMING and self.streaming_server:
@@ -428,6 +463,69 @@ class FaceTrackingApp:
                 # Add frame to recorder if recording
                 if face_id in self.face_recorders and self.face_recorders[face_id].is_recording():
                     self.face_recorders[face_id].add_frame(face_img)
+
+        # Process persistent faces that were not detected in this frame but still in persistence period
+        faces_to_remove = []
+        for face_id, face_data in self.persistent_faces.items():
+            if face_id not in current_faces and face_id in self.face_persistence_counters:
+                if self.face_persistence_counters[face_id] < self.face_persistence_frames:
+                    # Face is still in persistence period, display it
+                    face_img = face_data['face_img']
+                    is_recording = face_data.get('is_recording', False)
+                    has_eye_contact = face_data.get('has_eye_contact', False)
+                    eye_contact_score = face_data.get('eye_contact_score', 0.0)
+
+                    # Draw persistent face bounding box with faded color on main display
+                    cv2.rectangle(display_frame,
+                                 (face_data['xmin'], face_data['ymin']),
+                                 (face_data['xmin'] + face_data['width'], face_data['ymin'] + face_data['height']),
+                                 (0, 150, 0), 1)  # Faded green
+
+                    # Add face ID text with faded color
+                    cv2.putText(display_frame, face_id + " (tracking)",
+                              (face_data['xmin'], face_data['ymin'] - 10),
+                              cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 150, 0), 1)
+
+                    # Create a copy of face_img with indicators for streaming
+                    face_img_with_indicators = face_img.copy()
+
+                    # Add a faded colored border to indicate eye contact status
+                    border_color = (0, 150, 0) if has_eye_contact else (0, 0, 150)  # Faded color
+                    border_thickness = 3
+                    h, w = face_img_with_indicators.shape[:2]
+                    cv2.rectangle(face_img_with_indicators, (0, 0), (w-1, h-1), border_color, border_thickness)
+
+                    # Add eye contact indicator text with "tracking" label
+                    indicator_color = (0, 150, 0) if has_eye_contact else (0, 0, 150)  # Faded color
+                    status_text = f"Eye Contact: {eye_contact_score:.2f} (tracking...)"
+                    cv2.putText(face_img_with_indicators, status_text,
+                              (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, indicator_color, 2)
+                    cv2.putText(face_img_with_indicators, face_id,
+                              (10, h - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 2)  # Faded white
+
+                    # If recording, add recording indicator
+                    if is_recording:
+                        # Draw red circle in top-right corner
+                        circle_radius = 12
+                        cv2.circle(face_img_with_indicators,
+                                  (w - circle_radius - 15, circle_radius + 15),
+                                  circle_radius, (0, 0, 255), -1)
+                        # Add REC text
+                        cv2.putText(face_img_with_indicators, "REC",
+                                  (w - 50, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+
+                    # Update stream buffer with persistent face
+                    if config.ENABLE_STREAMING and self.streaming_server:
+                        self.stream_buffer.update_frame(face_id, face_img_with_indicators)
+                else:
+                    # Face persistence period expired, mark for removal
+                    faces_to_remove.append(face_id)
+
+        # Remove expired persistent faces
+        for face_id in faces_to_remove:
+            del self.persistent_faces[face_id]
+            if face_id in self.face_persistence_counters:
+                del self.face_persistence_counters[face_id]
 
         else:
             # No faces detected, reset the counter if it was non-zero

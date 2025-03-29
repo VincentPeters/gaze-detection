@@ -33,7 +33,8 @@ DEBOUNCE_TIME = 5.0  # Seconds between video recordings for the same face
 SCREENSHOT_DEBOUNCE_TIME = 1.0  # Seconds between screenshots for the same face
 VIDEO_DURATION = 6.0  # Duration of recorded videos in seconds
 POST_GAZE_RECORD_TIME = 1.0  # Continue recording for this many seconds after eye contact is lost
-FACE_REDETECTION_TIMEOUT = 1.0  # How long to keep tracking a face after detection fails
+FACE_REDETECTION_TIMEOUT = 1.0  # Time in seconds before closing a face window after detection is lost
+FACE_PERSISTENCE_FRAMES = 5  # Number of frames to keep a face visible after detection is lost
 
 # Video recording settings
 VIDEO_FPS = 20  # Frames per second for recorded videos
@@ -53,11 +54,16 @@ CAMERA_RESOLUTIONS = [
 ]
 
 # Camera device settings
-CAMERA_DEVICE = 0  # Default camera device index (0 for built-in webcam)
+CAMERA_DEVICE = 0  # Default camera device (0 is usually the built-in webcam)
+CAMERA_WIDTH = 1920  # Camera width (0 = default)
+CAMERA_HEIGHT = 1080  # Camera height (0 = default)
 
 # Face detection settings
-FACE_DETECTION_CONFIDENCE = 0.5  # Minimum confidence for face detection
-FACE_DETECTION_MODEL = 1  # MediaPipe model selection (0 for close-range, 1 for full-range)
+FACE_DETECTION_CONFIDENCE = 0.5  # MediaPipe face detection confidence threshold (0.0-1.0)
+FACE_DETECTION_MODEL = 0  # MediaPipe face detection model selection (0: short-range, 1: full-range)
+FACE_MARGIN_PERCENT = 60  # Percentage of margin to add around detected faces (%)
+FACE_REDETECTION_TIMEOUT = 1.0  # Time in seconds before closing a face window after detection is lost
+FACE_PERSISTENCE_FRAMES = 5  # Number of frames to keep a face visible after detection is lost
 
 # Window settingsqs
 MAIN_WINDOW_NAME = 'Face Detection'
@@ -66,9 +72,9 @@ FACE_WINDOW_HEIGHT = 200  # Height of individual face windows
 MAIN_WINDOW_POSITION = (50, 50)  # (x, y) position of the main window
 
 # Performance optimization settings
-PROCESSING_WIDTH = 320  # Width for face detection processing (smaller = faster)
-PROCESSING_HEIGHT = 240  # Height for face detection processing (smaller = faster)
-FRAME_PROCESSING_INTERVAL = 2  # Process every Nth frame for face detection (higher = less CPU usage)
+PROCESSING_WIDTH = 640  # Width for face detection processing (smaller = faster)
+PROCESSING_HEIGHT = 480  # Height for face detection processing (smaller = faster)
+FRAME_PROCESSING_INTERVAL = 1  # Process every n frames (can improve performance)
 DISPLAY_FPS = 15  # Target FPS for display (lower = less CPU usage)
 ENABLE_THREADING = True  # Use threading for face detection to improve responsiveness
 
@@ -119,30 +125,33 @@ os.makedirs(CONFIG_PRESETS_DIR, exist_ok=True)
 
 # Store default values
 DEFAULT_CONFIG = {
-    'FACE_DETECTION_CONFIDENCE': FACE_DETECTION_CONFIDENCE,
-    'FACE_DETECTION_MODEL': FACE_DETECTION_MODEL,
-    'FACE_MARGIN_PERCENT': FACE_MARGIN_PERCENT,
-    'FACE_REDETECTION_TIMEOUT': FACE_REDETECTION_TIMEOUT,
+    'CAMERA_DEVICE': CAMERA_DEVICE,
+    'CAMERA_WIDTH': CAMERA_WIDTH,
+    'CAMERA_HEIGHT': CAMERA_HEIGHT,
     'EYE_CONTACT_THRESHOLD': EYE_CONTACT_THRESHOLD,
-    'DEBOUNCE_TIME': DEBOUNCE_TIME,
-    'SCREENSHOT_DEBOUNCE_TIME': SCREENSHOT_DEBOUNCE_TIME,
-    'POST_GAZE_RECORD_TIME': POST_GAZE_RECORD_TIME,
-    'HIGH_RES_ENABLED': HIGH_RES_ENABLED,
-    'VIDEO_FPS': VIDEO_FPS,
-    'FRAME_PROCESSING_INTERVAL': FRAME_PROCESSING_INTERVAL,
-    'PROCESSING_WIDTH': PROCESSING_WIDTH,
-    'PROCESSING_HEIGHT': PROCESSING_HEIGHT,
     'VIDEO_CAPTURE_ENABLED': VIDEO_CAPTURE_ENABLED,
     'IMAGE_CAPTURE_ENABLED': IMAGE_CAPTURE_ENABLED,
-    # New layout settings
-    'USE_TKINTER_LAYOUT': USE_TKINTER_LAYOUT,
-    'ENABLE_FULLSCREEN': ENABLE_FULLSCREEN,
-    'LAYOUT_THEME': LAYOUT_THEME,
-    # Streaming settings
+    'DEBOUNCE_TIME': DEBOUNCE_TIME,
+    'SCREENSHOT_DEBOUNCE_TIME': SCREENSHOT_DEBOUNCE_TIME,
+    'VIDEO_DURATION': VIDEO_DURATION,
+    'POST_GAZE_RECORD_TIME': POST_GAZE_RECORD_TIME,
+    'FACE_REDETECTION_TIMEOUT': FACE_REDETECTION_TIMEOUT,
+    'FACE_MARGIN_PERCENT': FACE_MARGIN_PERCENT,
+    'HIGH_RES_ENABLED': HIGH_RES_ENABLED,
+    'VIDEO_FPS': VIDEO_FPS,
+    'PROCESSING_WIDTH': PROCESSING_WIDTH,
+    'PROCESSING_HEIGHT': PROCESSING_HEIGHT,
+    'FRAME_PROCESSING_INTERVAL': FRAME_PROCESSING_INTERVAL,
+    'FACE_DETECTION_CONFIDENCE': FACE_DETECTION_CONFIDENCE,
+    'FACE_DETECTION_MODEL': FACE_DETECTION_MODEL,
     'ENABLE_STREAMING': ENABLE_STREAMING,
     'STREAMING_PORT': STREAMING_PORT,
     'DISABLE_LOCAL_PREVIEW': DISABLE_LOCAL_PREVIEW,
-    'STREAM_QUALITY': STREAM_QUALITY
+    'STREAM_QUALITY': STREAM_QUALITY,
+    'FACE_PERSISTENCE_FRAMES': FACE_PERSISTENCE_FRAMES,
+    'USE_TKINTER_LAYOUT': USE_TKINTER_LAYOUT,
+    'ENABLE_FULLSCREEN': ENABLE_FULLSCREEN,
+    'LAYOUT_THEME': LAYOUT_THEME
 }
 
 # Thread lock for config updates
