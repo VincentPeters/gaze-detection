@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Face Tracking Streams</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+
+<body>
+  <div class="container">
+    <header>
+      <h1>Face Tracking with Eye Contact Detection</h1>
+    </header>
+
+    <div class="stream-container">
+      {% if has_main_stream %}
+      <div class="main-stream">
+        <h2>Main Camera Feed</h2>
+        <div class="stream-box">
+          <img src="{{ url_for('video_feed') }}" alt="Main Camera Feed">
+        </div>
+      </div>
+      {% endif %}
+
+      <div class="faces-container">
+        {% if face_streams %}
+        {% for face_id in face_streams %}
+        <div class="face-stream">
+          <h3>{{ face_id }}</h3>
+          <div class="stream-box">
+            <img src="{{ url_for('face_feed', face_id=face_id) }}" alt="{{ face_id }}">
+          </div>
+        </div>
+        {% endfor %}
+        {% else %}
+        <div class="no-faces">
+          <p>No faces detected yet</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <footer>
+      <p>MJPEG Streaming Interface - Refresh the page to update available streams</p>
+    </footer>
+  </div>
+</body>
+
+</html>

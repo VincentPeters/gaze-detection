@@ -14,6 +14,12 @@ ENABLE_CONFIG_WINDOW = True  # Enable/disable the configuration window
 USE_TKINTER_LAYOUT = True  # Use Tkinter layout instead of OpenCV windows
 ENABLE_FULLSCREEN = False  # Start in fullscreen mode
 
+# Streaming settings
+ENABLE_STREAMING = True  # Enable/disable streaming server
+STREAMING_PORT = 5000    # Port for the streaming server
+DISABLE_LOCAL_PREVIEW = False  # Disable local preview windows but keep streaming
+STREAM_QUALITY = 90      # JPEG quality for streams (0-100)
+
 # Eye contact detection settings
 EYE_CONTACT_THRESHOLD = 0.3  # Lowered from 0.5 to be less strict
 FACE_MARGIN_PERCENT = 60  # Percentage of margin to add around detected faces
@@ -131,7 +137,12 @@ DEFAULT_CONFIG = {
     # New layout settings
     'USE_TKINTER_LAYOUT': USE_TKINTER_LAYOUT,
     'ENABLE_FULLSCREEN': ENABLE_FULLSCREEN,
-    'LAYOUT_THEME': LAYOUT_THEME
+    'LAYOUT_THEME': LAYOUT_THEME,
+    # Streaming settings
+    'ENABLE_STREAMING': ENABLE_STREAMING,
+    'STREAMING_PORT': STREAMING_PORT,
+    'DISABLE_LOCAL_PREVIEW': DISABLE_LOCAL_PREVIEW,
+    'STREAM_QUALITY': STREAM_QUALITY
 }
 
 # Thread lock for config updates

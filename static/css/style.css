@@ -1,0 +1,120 @@
+/* Main styles for the streaming interface */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: Arial, sans-serif;
+  line-height: 1.6;
+  background-color: #222;
+  color: #fff;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+header {
+  text-align: center;
+  margin-bottom: 20px;
+  padding: 10px;
+  background-color: #333;
+  border-radius: 5px;
+}
+
+h1 {
+  color: #3498db;
+}
+
+h2,
+h3 {
+  color: #3498db;
+  margin-bottom: 10px;
+}
+
+.stream-container {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.main-stream {
+  background-color: #333;
+  padding: 15px;
+  border-radius: 5px;
+}
+
+.faces-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 15px;
+}
+
+.face-stream {
+  background-color: #333;
+  padding: 15px;
+  border-radius: 5px;
+}
+
+.stream-box {
+  overflow: hidden;
+  border-radius: 5px;
+  background-color: #111;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.stream-box img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.no-faces {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 40px;
+  background-color: #333;
+  border-radius: 5px;
+}
+
+footer {
+  text-align: center;
+  margin-top: 20px;
+  padding: 10px;
+  background-color: #333;
+  border-radius: 5px;
+  font-size: 0.9em;
+  color: #999;
+}
+
+/* Responsive adjustments */
+@media (min-width: 768px) {
+  .stream-container {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .main-stream {
+    flex: 1 1 100%;
+  }
+
+  .faces-container {
+    flex: 1 1 100%;
+  }
+}
+
+@media (min-width: 1200px) {
+  .main-stream {
+    flex: 2;
+  }
+
+  .faces-container {
+    flex: 1;
+  }
+}

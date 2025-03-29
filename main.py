@@ -12,6 +12,10 @@ from config_window import ConfigWindow  # Import the configuration window
 import tkinter as tk  # Import tkinter for the new layout
 from log_redirect import LogRedirector
 
+# Import streaming components
+from stream_buffer import StreamBuffer
+from streaming_server import StreamingServer
+
 # Import layout manager if enabled in config
 if config.USE_TKINTER_LAYOUT:
     from layout_manager import LayoutManager
@@ -92,6 +96,10 @@ class FaceTrackingApp:
         self.layout_manager = None
         self.log_redirector = None
 
+        # Initialize stream buffer and streaming server
+        self.stream_buffer = StreamBuffer()
+        self.streaming_server = None
+
         # Track the last number of detected faces to avoid repeated messages
         self.last_detected_faces_count = 0
 
@@ -156,6 +164,14 @@ class FaceTrackingApp:
             print(f"Using Tkinter layout: {'Enabled' if config.USE_TKINTER_LAYOUT else 'Disabled'}")
             print(f"Fullscreen mode: {'Enabled' if config.ENABLE_FULLSCREEN else 'Disabled'}")
             print(f"Layout theme: {config.LAYOUT_THEME}")
+
+        # Initialize streaming server if enabled
+        if config.ENABLE_STREAMING:
+            self.streaming_server = StreamingServer(self.stream_buffer, port=config.STREAMING_PORT)
+            self.streaming_server.start()
+            print(f"Streaming server started at http://localhost:{config.STREAMING_PORT}")
+            print(f"Streaming quality: {config.STREAM_QUALITY}%")
+            print(f"Local preview: {'Disabled' if config.DISABLE_LOCAL_PREVIEW else 'Enabled'}")
 
         # Initialize MediaPipe face detection
         mp_face_detection = mp.solutions.face_detection
@@ -257,6 +273,10 @@ class FaceTrackingApp:
         # Create a copy for drawing
         display_frame = display_frame_original.copy()
 
+        # Update stream buffer with main camera feed
+        if config.ENABLE_STREAMING and self.streaming_server:
+            self.stream_buffer.update_frame('main', display_frame.copy())
+
         # Convert to RGB for MediaPipe
         rgb_frame = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
 
@@ -309,6 +329,10 @@ class FaceTrackingApp:
 
                 # Update last seen time for this face
                 self.last_seen_time[face_id] = time.time()
+
+                # Update stream buffer with face frame
+                if config.ENABLE_STREAMING and self.streaming_server:
+                    self.stream_buffer.update_frame(face_id, face_img.copy())
 
                 # Draw bounding box on the display frame
                 cv2.rectangle(display_frame, (xmin, ymin), (xmin + width, ymin + height), (0, 255, 0), 2)
@@ -427,7 +451,7 @@ class FaceTrackingApp:
                     # Use the face index (0-3) for the panel
                     face_index = min(i, 3)  # Limit to 4 panels (0-3)
                     self.layout_manager.update_face_panel(face_index, face_img, is_recording)
-                else:
+                elif not config.DISABLE_LOCAL_PREVIEW:
                     # Create or update OpenCV window for this face
                     window_name = f"Face {i+1}"
                     if window_name not in self.active_faces:
@@ -488,7 +512,7 @@ class FaceTrackingApp:
         if self.layout_manager:
             # Update the camera feed in Tkinter
             self.layout_manager.update_camera_feed(display_frame)
-        else:
+        elif not config.DISABLE_LOCAL_PREVIEW:
             # Show in OpenCV window
             cv2.imshow(config.MAIN_WINDOW_NAME, display_frame)
 
@@ -534,6 +558,11 @@ class FaceTrackingApp:
         """Clean up resources."""
         # Release the camera
         self.cap.release()
+
+        # Stop the streaming server if it was started
+        if self.streaming_server:
+            self.streaming_server.stop()
+            print("Streaming server stopped")
 
         # Close all OpenCV windows if not using Tkinter
         if not self.layout_manager:
